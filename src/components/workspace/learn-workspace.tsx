@@ -1,14 +1,13 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
-import { flushSync } from "react-dom";
 import { Icon } from "@/components/icons";
 import { ResponsePanel } from "@/components/response-panel";
 import { Field } from "@/components/ui/field";
 import { RadioCards, type RadioCardOption } from "@/components/ui/radio-cards";
 import { buttonGhost, control, panel } from "@/components/ui/styles";
+import { AccessCodeField, useAccessCode } from "@/components/workspace/access-code-field";
 import { FormFooter } from "@/components/workspace/form-footer";
-import { saveAccessCode, useSavedAccessCode } from "@/lib/access-code-store";
 import { askLearn } from "@/lib/assistant/client";
 import type { AssistantResult, LearnRequest, LearnerLevel } from "@/lib/assistant/types";
 import { hasErrors, LIMITS, validateLearn } from "@/lib/assistant/validation";
@@ -41,12 +40,7 @@ export function LearnWorkspace() {
   const panelRef = useRef<HTMLElement>(null);
   const inFlight = useRef<AbortController>(null);
 
-  // Access code: remembered per tab after it works once; see access-code-store.
-  const savedCode = useSavedAccessCode();
-  const [codeDraft, setCodeDraft] = useState("");
-  const [editingCode, setEditingCode] = useState(false);
-  const [codeError, setCodeError] = useState<string>();
-  const showCodeField = !savedCode || editingCode;
+  const accessCode = useAccessCode("learn-access-code");
 
   const request: LearnRequest = {
     mode: "learn",
@@ -75,13 +69,8 @@ export function LearnWorkspace() {
       document.getElementById("learn-question")?.focus();
       return;
     }
-    const code = showCodeField ? codeDraft.trim() : savedCode;
-    if (!code) {
-      setCodeError("Enter the access code to ask CodeBuddy.");
-      document.getElementById("learn-access-code")?.focus();
-      return;
-    }
-    setCodeError(undefined);
+    const code = accessCode.take("Enter the access code to ask CodeBuddy.");
+    if (!code) return;
 
     const controller = new AbortController();
     inFlight.current = controller;
@@ -94,20 +83,10 @@ export function LearnWorkspace() {
     setPending(false);
 
     if (outcome.status === "error" && outcome.code === "access_denied") {
-      saveAccessCode("");
-      flushSync(() => {
-        setEditingCode(true);
-        setCodeDraft(code);
-        setCodeError(outcome.message);
-      });
-      document.getElementById("learn-access-code")?.focus();
+      accessCode.rejected(code, outcome.message);
       return;
     }
-    if (outcome.status === "answered") {
-      saveAccessCode(code);
-      setEditingCode(false);
-      setCodeDraft("");
-    }
+    if (outcome.status === "answered") accessCode.accepted(code);
     setResult(outcome);
     if (outcome.status === "error" && outcome.fieldErrors?.question) {
       document.getElementById("learn-question")?.focus();
@@ -125,11 +104,6 @@ export function LearnWorkspace() {
     setTopic(undefined);
     setSubmitted(false);
     setResult(null);
-  }
-
-  function changeCode() {
-    flushSync(() => setEditingCode(true));
-    document.getElementById("learn-access-code")?.focus();
   }
 
   return (
@@ -211,37 +185,7 @@ export function LearnWorkspace() {
             onChange={setLevel}
           />
 
-          {showCodeField ? (
-            <Field
-              id="learn-access-code"
-              label="Access code"
-              hint="Ask the person running this CodeBuddy server. It’s remembered for this browser tab only."
-              error={codeError}
-            >
-              {(props) => (
-                <input
-                  {...props}
-                  type="password"
-                  name="accessCode"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={codeDraft}
-                  onChange={(e) => setCodeDraft(e.target.value)}
-                  className={`${control} min-h-11 font-mono`}
-                />
-              )}
-            </Field>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-5 text-sm">
-              <p className="flex items-center gap-2 text-muted">
-                <Icon name="check" className="size-4 text-mode" />
-                Access code saved for this tab
-              </p>
-              <button type="button" onClick={changeCode} className={buttonGhost}>
-                Change
-              </button>
-            </div>
-          )}
+          <AccessCodeField {...accessCode.fieldProps} />
         </div>
 
         <FormFooter

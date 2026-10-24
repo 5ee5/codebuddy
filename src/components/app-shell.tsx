@@ -28,7 +28,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="md:mt-auto md:space-y-2.5 md:border-t md:border-line md:px-2 md:pt-4">
             <StatusBadge />
             <p className="hidden text-xs leading-relaxed text-muted md:block">
-              Learn answers come from Claude. Debug and Practice still show the request that
+              Learn and Debug answers come from Claude. Practice still shows the request that
               would be sent.
             </p>
           </div>

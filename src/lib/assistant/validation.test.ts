@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEBUG_OUTPUT_LIMITS,
   LEARN_OUTPUT_LIMITS,
   LIMITS,
+  parseDebugRequest,
+  parseDebugResponse,
   parseLearnRequest,
   parseLearnResponse,
+  validateDebug,
   validateLearn,
 } from "@/lib/assistant/validation";
 
@@ -96,5 +100,135 @@ describe("parseLearnResponse", () => {
     ["a non-object answer", "just text"],
   ])("rejects %s", (_label, value) => {
     expect(parseLearnResponse(value)).toBeNull();
+  });
+});
+
+// ------------------------------------------------------------------ Debug ----
+
+const studentCode = "numbers = [10, 20, 30]\n\nfor i in range(4):\n    print(numbers[i])";
+
+describe("parseDebugRequest", () => {
+  it("accepts a well-formed request, keeps indentation and drops unknown keys", () => {
+    expect(
+      parseDebugRequest({
+        mode: "debug",
+        language: "python",
+        code: `${studentCode}\n\n  `,
+        problem: "  IndexError: list index out of range  ",
+        secret: "dropped",
+      }),
+    ).toEqual({
+      mode: "debug",
+      language: "python",
+      code: studentCode,
+      problem: "IndexError: list index out of range",
+    });
+  });
+
+  it.each([
+    ["not an object", "code"],
+    ["the wrong mode", { mode: "learn", language: "python", code: "x", problem: "y" }],
+    ["an unknown language", { mode: "debug", language: "rust", code: "x", problem: "y" }],
+    ["non-string code", { mode: "debug", language: "python", code: 1, problem: "y" }],
+    ["a missing problem", { mode: "debug", language: "python", code: "x" }],
+  ])("rejects %s", (_label, body) => {
+    expect(parseDebugRequest(body)).toBeNull();
+  });
+});
+
+describe("validateDebug", () => {
+  const base = { mode: "debug" as const, language: "python" as const, code: studentCode, problem: "It crashes with IndexError" };
+
+  it("accepts code with a described problem", () => {
+    expect(validateDebug(base)).toEqual({});
+  });
+
+  it.each([
+    ["empty code", { code: "" }, "code", /Paste the code/],
+    ["whitespace-only code", { code: "  \n\t " }, "code", /Paste the code/],
+    ["oversized code", { code: "x".repeat(LIMITS.codeMax + 1) }, "code", /too long/],
+    ["an empty problem", { problem: "" }, "problem", /Describe the problem/],
+    ["a too-short problem", { problem: "broken" }, "problem", /at least 10/],
+    ["an oversized problem", { problem: "x".repeat(LIMITS.problemMax + 1) }, "problem", /under 4000/],
+  ])("flags %s", (_label, patch, field, message) => {
+    const errors = validateDebug({ ...base, ...patch });
+    expect(errors[field as "code" | "problem"]).toMatch(message);
+  });
+
+  it("accepts code exactly at the limit", () => {
+    expect(validateDebug({ ...base, code: "x".repeat(LIMITS.codeMax) })).toEqual({});
+  });
+});
+
+describe("parseDebugResponse", () => {
+  const fixed = "numbers = [10, 20, 30]\n\nfor i in range(len(numbers)):\n\tprint(numbers[i])\n";
+  const diagnosed = {
+    outcome: "diagnosed",
+    diagnosis: "The loop asks for one more item than the list has.",
+    explanation: "range(4) gives 0, 1, 2 and 3.\n\nThe list only has positions 0, 1 and 2.",
+    confirmed: ["The list has three items."],
+    hypotheses: [],
+    missingInfo: [],
+    correctedCode: { language: "python", code: fixed },
+    changes: [{ change: "range(4) became range(len(numbers))", reason: "It always matches the list length." }],
+    nextSteps: ["Run it again and check that it prints three numbers."],
+  };
+  const needsMore = {
+    outcome: "needs_more_info",
+    diagnosis: "I can't tell yet why the result is wrong.",
+    explanation: "The code looks valid, so the problem depends on the input.",
+    confirmed: [],
+    hypotheses: ["The input may contain spaces."],
+    missingInfo: ["The exact input you typed."],
+    correctedCode: null,
+    changes: [],
+    nextSteps: ["Print the input before using it."],
+  };
+
+  it("accepts a diagnosed answer and keeps corrected code byte for byte", () => {
+    const parsed = parseDebugResponse(diagnosed, "python");
+    expect(parsed).toEqual({ mode: "debug", ...diagnosed });
+    expect(parsed!.correctedCode!.code).toBe(fixed);
+  });
+
+  it("accepts an answer that needs more information, without corrected code", () => {
+    const parsed = parseDebugResponse(needsMore, "python");
+    expect(parsed).not.toBeNull();
+    expect(parsed).not.toHaveProperty("correctedCode");
+    expect(parsed!.missingInfo).toEqual(["The exact input you typed."]);
+  });
+
+  it("accepts a diagnosis without corrected code", () => {
+    expect(parseDebugResponse({ ...diagnosed, correctedCode: null, changes: [] }, "python")).not.toBeNull();
+  });
+
+  it("allows any language when the student chose Other", () => {
+    expect(parseDebugResponse({ ...diagnosed, correctedCode: { language: "javascript", code: "x" } }, "other")).not.toBeNull();
+  });
+
+  it("drops unexpected keys", () => {
+    expect(parseDebugResponse({ ...diagnosed, executed: true }, "python")).not.toHaveProperty("executed");
+  });
+
+  const L = DEBUG_OUTPUT_LIMITS;
+  it.each([
+    ["an unknown outcome", { ...diagnosed, outcome: "fixed" }],
+    ["needs_more_info without missing information", { ...needsMore, missingInfo: [] }],
+    ["needs_more_info with corrected code", { ...needsMore, correctedCode: diagnosed.correctedCode, changes: diagnosed.changes }],
+    ["corrected code without explained changes", { ...diagnosed, changes: [] }],
+    ["corrected code in another language", { ...diagnosed, correctedCode: { language: "java", code: "x" } }],
+    ["corrected code in an unknown language", { ...diagnosed, correctedCode: { language: "rust", code: "x" } }],
+    ["empty corrected code", { ...diagnosed, correctedCode: { language: "python", code: "  " } }],
+    ["oversized corrected code", { ...diagnosed, correctedCode: { language: "python", code: "x".repeat(L.correctedCodeMax + 1) } }],
+    ["an oversized diagnosis", { ...diagnosed, diagnosis: "x".repeat(L.diagnosisMax + 1) }],
+    ["an empty explanation", { ...diagnosed, explanation: "" }],
+    ["too many hypotheses", { ...diagnosed, hypotheses: Array(L.listMax + 1).fill("maybe") }],
+    ["a malformed change", { ...diagnosed, changes: [{ change: "x" }] }],
+    ["too many changes", { ...diagnosed, changes: Array(L.changesMax + 1).fill(diagnosed.changes[0]) }],
+    ["no next steps", { ...diagnosed, nextSteps: [] }],
+    ["an oversized list item", { ...diagnosed, confirmed: ["x".repeat(L.itemMax + 1)] }],
+    ["a non-object", "The bug is on line 4."],
+  ])("rejects %s", (_label, value) => {
+    expect(parseDebugResponse(value, "python")).toBeNull();
   });
 });

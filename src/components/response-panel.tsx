@@ -1,24 +1,48 @@
 "use client";
 
 import type { Ref } from "react";
+import { DebugAnswer } from "@/components/debug-answer";
 import { Icon } from "@/components/icons";
 import { LearnAnswer } from "@/components/learn-answer";
 import { CodeBlock } from "@/components/ui/code-block";
 import { CopyButton } from "@/components/ui/copy-button";
-import { eyebrow, panel } from "@/components/ui/styles";
-import type { AssistantPreview, AssistantResult, LearnRequest } from "@/lib/assistant/types";
-import type { ModeConfig } from "@/lib/modes";
+import { buttonSecondary, eyebrow, panel } from "@/components/ui/styles";
+import type {
+  AssistantPreview,
+  AssistantResult,
+  DebugRequest,
+  LearnRequest,
+} from "@/lib/assistant/types";
+import type { ModeConfig, ModeId } from "@/lib/modes";
 
 interface ResponsePanelProps {
   mode: ModeConfig;
   /** Local preview, for modes that are not connected to the AI yet. */
   preview?: AssistantPreview | null;
-  /** Real result from the server, for connected modes (Learn). */
-  result?: AssistantResult<LearnRequest> | null;
+  /** Real result from the server, for connected modes (Learn and Debug). */
+  result?: AssistantResult<LearnRequest> | AssistantResult<DebugRequest> | null;
   pending: boolean;
+  /** When set, a failed request offers "Try again" (sends the same request). */
+  onRetry?: () => void;
+  /** When set, an answer offers a button to start over with an empty form. */
+  onNewSession?: () => void;
   /** Workspaces move focus here after a successful submit. */
   ref?: Ref<HTMLElement>;
 }
+
+/** Wording for the modes that call the AI. */
+const LIVE_COPY: Partial<Record<ModeId, { empty: string; sent: string; pending: string }>> = {
+  learn: {
+    empty: "No question yet",
+    sent: "Your question is sent to Claude",
+    pending: "CodeBuddy is thinking about your question…",
+  },
+  debug: {
+    empty: "No code sent yet",
+    sent: "Your code and description are sent to Claude",
+    pending: "CodeBuddy is reading your code. A long program can take up to a minute…",
+  },
+};
 
 /**
  * Where the tutor's answer appears. Connected modes show a validated AI
@@ -26,7 +50,15 @@ interface ResponsePanelProps {
  * would be sent, with a clear notice that nothing left the browser. The
  * empty state outlines the sections an answer has.
  */
-export function ResponsePanel({ mode, preview = null, result = null, pending, ref }: ResponsePanelProps) {
+export function ResponsePanel({
+  mode,
+  preview = null,
+  result = null,
+  pending,
+  onRetry,
+  onNewSession,
+  ref,
+}: ResponsePanelProps) {
   const titleId = `${mode.id}-response-title`;
   const time = preview ? new Date(preview.createdAt).toLocaleTimeString() : null;
   const state = pending
@@ -75,10 +107,20 @@ export function ResponsePanel({ mode, preview = null, result = null, pending, re
         {pending ? (
           <p className="flex items-center gap-2 text-sm text-muted">
             <Icon name="spinner" className="size-4 animate-spin" />
-            {mode.connected ? "CodeBuddy is thinking about your question…" : "Preparing your request…"}
+            {LIVE_COPY[mode.id]?.pending ?? "Preparing your request…"}
           </p>
         ) : result?.status === "answered" ? (
-          <LearnAnswer answer={result} />
+          <div className="flex flex-col gap-6">
+            {result.mode === "learn" ? <LearnAnswer answer={result} /> : <DebugAnswer answer={result} />}
+            {onNewSession && (
+              <div className="border-t border-line pt-5">
+                <button type="button" onClick={onNewSession} className={buttonSecondary}>
+                  <Icon name="reset" className="size-4" />
+                  Start a new debug session
+                </button>
+              </div>
+            )}
+          </div>
         ) : result?.status === "error" ? (
           <div className="border-l-2 border-danger bg-surface-2 px-4 py-3 text-sm leading-relaxed">
             <p className="flex items-start gap-2 font-semibold">
@@ -86,6 +128,12 @@ export function ResponsePanel({ mode, preview = null, result = null, pending, re
               No answer this time
             </p>
             <p className="mt-1 text-muted">{result.message}</p>
+            {onRetry && (
+              <button type="button" onClick={onRetry} className={`${buttonSecondary} mt-3`}>
+                <Icon name="reset" className="size-4" />
+                Try again
+              </button>
+            )}
           </div>
         ) : preview ? (
           <div className="flex flex-col gap-4">
@@ -115,22 +163,21 @@ export function ResponsePanel({ mode, preview = null, result = null, pending, re
 }
 
 function EmptyState({ mode }: { mode: ModeConfig }) {
+  const live = mode.connected ? LIVE_COPY[mode.id] : undefined;
   return (
     <div>
-      <p className="font-display text-xl font-semibold">
-        {mode.connected ? "No question yet" : "Nothing sent yet"}
-      </p>
+      <p className="font-display text-xl font-semibold">{live?.empty ?? "Nothing sent yet"}</p>
       <p className="mt-1.5 text-sm leading-relaxed text-muted">
-        {mode.connected ? (
+        {live ? (
           <>
             Fill in the form and choose{" "}
-            <strong className="font-semibold text-ink">Ask CodeBuddy</strong>. Your question is
-            sent to Claude, and the answer appears here.
+            <strong className="font-semibold text-ink">{mode.submitLabel}</strong>. {live.sent}, and
+            the answer appears here.
           </>
         ) : (
           <>
             Fill in the form and choose{" "}
-            <strong className="font-semibold text-ink">Preview request</strong>. {mode.label}{" "}
+            <strong className="font-semibold text-ink">{mode.submitLabel}</strong>. {mode.label}{" "}
             isn&apos;t connected to the AI yet, so you&apos;ll see the exact request CodeBuddy
             would send instead of an answer.
           </>

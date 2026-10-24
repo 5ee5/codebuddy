@@ -6,14 +6,18 @@ import { ResponsePanel } from "@/components/response-panel";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Field, Select } from "@/components/ui/field";
 import { buttonGhost, buttonSecondary, panel } from "@/components/ui/styles";
+import { AccessCodeField, useAccessCode } from "@/components/workspace/access-code-field";
 import { FormFooter } from "@/components/workspace/form-footer";
-import { previewRequest } from "@/lib/assistant/client";
-import type {
-  AssistantPreview,
-  DebugRequest,
-  ProgrammingLanguage,
-} from "@/lib/assistant/types";
-import { hasErrors, validateDebug } from "@/lib/assistant/validation";
+import { askDebug } from "@/lib/assistant/client";
+import type { DebugRequest, FieldErrors, ProgrammingLanguage } from "@/lib/assistant/types";
+import { LIMITS, validateDebug } from "@/lib/assistant/validation";
+import {
+  canRetry,
+  debugSession,
+  initialDebugSession,
+  type DebugEvent,
+  type DebugSession,
+} from "@/lib/debug-session";
 import { LANGUAGE_EXTENSIONS, LANGUAGE_LABELS, LANGUAGES } from "@/lib/languages";
 import { getMode } from "@/lib/modes";
 
@@ -26,59 +30,118 @@ const EXAMPLE = {
 for i in range(4):
     print(numbers[i])
 `,
-  errorMessage: `Traceback (most recent call last):
+  problem: `Traceback (most recent call last):
   File "main.py", line 4, in <module>
     print(numbers[i])
 IndexError: list index out of range`,
 };
 
+function focusFirstInvalid(errors: FieldErrors<DebugRequest>) {
+  const id = errors.code ? "debug-code" : errors.problem ? "debug-problem" : null;
+  if (id) document.getElementById(id)?.focus();
+  return id !== null;
+}
+
+function Counter({ length, max }: { length: number; max: number }) {
+  return (
+    <span className={`font-mono text-xs tabular-nums ${length > max ? "text-danger" : "text-muted"}`}>
+      {length.toLocaleString("en")}/{max.toLocaleString("en")}
+    </span>
+  );
+}
+
 export function DebugWorkspace() {
   const [language, setLanguage] = useState<ProgrammingLanguage>("python");
   const [code, setCode] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [problem, setProblem] = useState("");
   const [submitted, setSubmitted] = useState(false);
-  const [preview, setPreview] = useState<AssistantPreview<DebugRequest> | null>(null);
-  const [pending, setPending] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
+  const accessCode = useAccessCode("debug-access-code");
+
+  // Request lifecycle (see lib/debug-session). The ref always holds the latest
+  // state, so a double click in the same frame can't send twice.
+  const [session, setSession] = useState<DebugSession>(initialDebugSession);
+  const sessionRef = useRef(session);
+  const inFlight = useRef<AbortController>(null);
+
+  function apply(event: DebugEvent): DebugSession | null {
+    const next = debugSession(sessionRef.current, event);
+    if (next === sessionRef.current) return null;
+    sessionRef.current = next;
+    setSession(next);
+    return next;
+  }
 
   const request: DebugRequest = {
     mode: "debug",
     language,
     code: code.trimEnd(),
-    errorMessage: errorMessage.trim(),
+    problem: problem.trim(),
   };
+  // Client errors appear after the first submit attempt, then update live.
+  // A server message stays only while the field still holds what was sent.
   const errors = submitted ? validateDebug(request) : {};
+  const sent = session.request;
+  const serverErrors = session.result?.status === "error" ? session.result.fieldErrors : undefined;
+  const codeError = errors.code ?? (sent?.code === request.code ? serverErrors?.code : undefined);
+  const problemError =
+    errors.problem ?? (sent?.problem === request.problem ? serverErrors?.problem : undefined);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitted(true);
-    const result = validateDebug(request);
-    if (hasErrors(result)) {
-      setPreview(null);
-      const firstInvalid = result.code ? "debug-code" : "debug-error";
-      document.getElementById(firstInvalid)?.focus();
+  async function send(next: DebugSession, accessKey: string) {
+    if (!next.request) return;
+    const controller = new AbortController();
+    inFlight.current = controller;
+    const result = await askDebug(next.request, accessKey, controller.signal);
+    // Cleared while waiting: drop the late result.
+    if (controller.signal.aborted) return;
+    inFlight.current = null;
+
+    if (result.status === "error" && result.code === "access_denied") {
+      apply({ type: "settled", attempt: next.attempt, result });
+      apply({ type: "reset" });
+      accessCode.rejected(accessKey, result.message);
       return;
     }
-    setPending(true);
-    try {
-      setPreview(await previewRequest(request));
+    if (result.status === "answered") accessCode.accepted(accessKey);
+    if (!apply({ type: "settled", attempt: next.attempt, result })) return;
+    if (!(result.status === "error" && result.fieldErrors && focusFirstInvalid(result.fieldErrors))) {
       panelRef.current?.focus();
-    } finally {
-      setPending(false);
     }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (sessionRef.current.phase === "pending") return;
+    setSubmitted(true);
+    if (focusFirstInvalid(validateDebug(request))) return;
+    const key = accessCode.take("Enter the access code to debug with CodeBuddy.");
+    if (!key) return;
+    const next = apply({ type: "submit", request });
+    if (next) void send(next, key);
+  }
+
+  function handleRetry() {
+    const key = accessCode.take("Enter the access code to debug with CodeBuddy.");
+    if (!key) return;
+    const next = apply({ type: "retry" });
+    if (next) void send(next, key);
+  }
+
+  /** Clear and "Start a new debug session": empty form, no answer, same language. */
+  function startOver() {
+    // The server may still finish (and bill) an aborted request; its answer is discarded.
+    inFlight.current?.abort();
+    inFlight.current = null;
+    apply({ type: "reset" });
+    setCode("");
+    setProblem("");
+    setSubmitted(false);
   }
 
   function loadExample() {
     setLanguage(EXAMPLE.language);
     setCode(EXAMPLE.code);
-    setErrorMessage(EXAMPLE.errorMessage);
-  }
-
-  function handleClear() {
-    setCode("");
-    setErrorMessage("");
-    setSubmitted(false);
-    setPreview(null);
+    setProblem(EXAMPLE.problem);
   }
 
   return (
@@ -114,7 +177,8 @@ export function DebugWorkspace() {
             id="debug-code"
             label="Your code"
             hint="Paste the smallest piece of code that shows the problem. Tab moves to the next field, so indent with spaces."
-            error={errors.code}
+            error={codeError}
+            aside={<Counter length={code.trimEnd().length} max={LIMITS.codeMax} />}
           >
             {(props) => (
               <CodeEditor
@@ -131,30 +195,34 @@ export function DebugWorkspace() {
           </Field>
 
           <Field
-            id="debug-error"
-            label="Error message"
-            optional
-            hint="Copy the full error text, including the line number. Leave it empty if the program runs but gives the wrong result."
-            error={errors.errorMessage}
+            id="debug-problem"
+            label="Describe the problem"
+            hint="Paste the full error message, including the line number, or say what you expected to happen and what happened instead."
+            error={problemError}
+            aside={<Counter length={problem.trim().length} max={LIMITS.problemMax} />}
           >
             {(props) => (
               <CodeEditor
                 {...props}
-                name="errorMessage"
+                name="problem"
                 rows={4}
-                title="error output"
-                value={errorMessage}
-                onChange={(e) => setErrorMessage(e.target.value)}
+                title="error or description"
+                value={problem}
+                onChange={(e) => setProblem(e.target.value)}
                 placeholder="IndexError: list index out of range"
               />
             )}
           </Field>
+
+          <AccessCodeField {...accessCode.fieldProps} />
         </div>
 
         <FormFooter
-          pending={pending}
+          pending={session.phase === "pending"}
+          label={mode.submitLabel}
+          pendingLabel="Debugging…"
           secondary={
-            <button type="button" onClick={handleClear} className={buttonGhost}>
+            <button type="button" onClick={startOver} className={buttonGhost}>
               <Icon name="reset" className="size-4" />
               Clear
             </button>
@@ -162,7 +230,21 @@ export function DebugWorkspace() {
         />
       </form>
 
-      <ResponsePanel ref={panelRef} mode={mode} preview={preview} pending={pending} />
+      <ResponsePanel
+        ref={panelRef}
+        mode={mode}
+        result={session.result}
+        pending={session.phase === "pending"}
+        onRetry={canRetry(session) ? handleRetry : undefined}
+        onNewSession={
+          session.phase === "answered"
+            ? () => {
+                startOver();
+                document.getElementById("debug-code")?.focus();
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }

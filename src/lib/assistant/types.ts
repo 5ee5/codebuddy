@@ -46,17 +46,33 @@ export interface LearnResponse {
 export interface DebugRequest {
   mode: "debug";
   language: ProgrammingLanguage;
+  /** The student's code, indentation intact. */
   code: string;
-  errorMessage: string;
+  /** The error message, or what they expected versus what happened. */
+  problem: string;
+}
+
+export interface DebugChange {
+  change: string;
+  reason: string;
 }
 
 export interface DebugResponse {
   mode: "debug";
-  summary: string;
-  likelyCause: string;
-  suggestedFix: string;
-  fixedCode?: CodeSnippet;
-  tips: string[];
+  /** `needs_more_info` when the code and description aren't enough to say. */
+  outcome: "diagnosed" | "needs_more_info";
+  diagnosis: string;
+  explanation: string;
+  /** Facts that are directly visible in the code or the error. */
+  confirmed: string[];
+  /** Possible causes that the model could not confirm. */
+  hypotheses: string[];
+  /** What the student should add; never empty for `needs_more_info`. */
+  missingInfo: string[];
+  /** A complete corrected program. Never present for `needs_more_info`. */
+  correctedCode?: CodeSnippet;
+  changes: DebugChange[];
+  nextSteps: string[];
 }
 
 // ------------------------------------------------------------- Practice ----

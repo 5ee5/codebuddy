@@ -1,8 +1,5 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
-import { failure } from "@/lib/assistant/errors";
 import type {
-  AssistantErrorCode,
   AssistantFailure,
   LearnerLevel,
   LearnRequest,
@@ -10,6 +7,7 @@ import type {
 } from "@/lib/assistant/types";
 import { LEARN_OUTPUT_LIMITS as L, parseLearnResponse } from "@/lib/assistant/validation";
 import { LANGUAGES } from "@/lib/languages";
+import { askForJson, type MessagesClient } from "@/lib/server/structured";
 
 /*
  * Output budget for one answer. The contract's limits allow about 1,300
@@ -67,21 +65,9 @@ function userMessage(request: LearnRequest): string {
   return lines.join("\n");
 }
 
-/** The minimum of the SDK client that `answerLearn` needs; easy to mock. */
-export type MessagesClient = Pick<Anthropic, "messages">;
-
 export type LearnOutcome =
   | { ok: true; response: LearnResponse; model: string }
   | { ok: false; status: number; failure: AssistantFailure<LearnRequest>; requestId?: string | null };
-
-function fail(
-  status: number,
-  code: AssistantErrorCode,
-  message?: string,
-  requestId?: string | null,
-): LearnOutcome {
-  return { ok: false, status, failure: failure<LearnRequest>(code, message), requestId };
-}
 
 /**
  * Asks the model for one Learn answer and validates it against the
@@ -91,61 +77,16 @@ export async function answerLearn(
   request: LearnRequest,
   { client, model, signal }: { client: MessagesClient; model: string; signal?: AbortSignal },
 ): Promise<LearnOutcome> {
-  let message: Anthropic.Message;
-  try {
-    message = await client.messages.create(
-      {
-        model,
-        max_tokens: LEARN_MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userMessage(request) }],
-        output_config: {
-          effort: "low",
-          format: { type: "json_schema", schema: LEARN_RESPONSE_SCHEMA },
-        },
-      },
-      // Stops the provider call if the learner's browser disconnects.
-      { signal },
-    );
-  } catch (error) {
-    return mapProviderError(error);
-  }
-
-  if (message.stop_reason === "refusal") return fail(422, "refused");
-  if (message.stop_reason === "max_tokens") {
-    return fail(502, "malformed_output", "That answer got too long. Try a narrower question.");
-  }
-
-  const text = message.content.find((block) => block.type === "text")?.text;
-  let parsed: unknown;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = null;
-  }
-  const response = parseLearnResponse(parsed);
-  if (!response) return fail(502, "malformed_output");
-
-  return { ok: true, response, model: message.model || model };
-}
-
-/**
- * Maps SDK errors (most specific first) to a safe code and HTTP status. The
- * provider's own message is deliberately dropped; only its request ID is kept
- * for the server log.
- */
-export function mapProviderError(error: unknown): LearnOutcome {
-  const requestId = error instanceof Anthropic.APIError ? error.requestID : undefined;
-  if (error instanceof Anthropic.RateLimitError) return fail(429, "rate_limited", undefined, requestId);
-  if (
-    error instanceof Anthropic.AuthenticationError ||
-    error instanceof Anthropic.PermissionDeniedError ||
-    error instanceof Anthropic.NotFoundError
-  ) {
-    return fail(503, "not_configured", undefined, requestId);
-  }
-  if (error instanceof Anthropic.APIConnectionTimeoutError) return fail(504, "timeout");
-  if (error instanceof Anthropic.BadRequestError) return fail(502, "unavailable", undefined, requestId);
-  if (error instanceof Anthropic.APIError) return fail(503, "unavailable", undefined, requestId);
-  return fail(500, "unavailable");
+  const outcome = await askForJson<LearnResponse, LearnRequest>({
+    client,
+    model,
+    system: SYSTEM_PROMPT,
+    userMessage: userMessage(request),
+    schema: LEARN_RESPONSE_SCHEMA,
+    maxTokens: LEARN_MAX_TOKENS,
+    tooLongMessage: "That answer got too long. Try a narrower question.",
+    parse: parseLearnResponse,
+    signal,
+  });
+  return outcome.ok ? { ok: true, response: outcome.value, model: outcome.model } : outcome;
 }

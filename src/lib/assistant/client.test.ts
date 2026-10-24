@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { askLearn, previewRequest } from "@/lib/assistant/client";
-import type { LearnRequest } from "@/lib/assistant/types";
+import { askDebug, askLearn, previewRequest } from "@/lib/assistant/client";
+import type { DebugRequest, LearnRequest } from "@/lib/assistant/types";
 
 const request: LearnRequest = { mode: "learn", question: "What is a variable?", level: "beginner" };
 const CODE = "test-access-code-0123456789";
@@ -97,9 +97,91 @@ describe("previewRequest", () => {
       mode: "debug",
       language: "python",
       code: "print(x)",
-      errorMessage: "",
+      problem: "",
     });
     expect(preview).toMatchObject({ status: "not-connected", plannedEndpoint: "/api/debug" });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("askDebug", () => {
+  const debugRequest: DebugRequest = {
+    mode: "debug",
+    language: "python",
+    code: "def total(xs):\n\tresult = 0\n    for x in xs:\n        result += x\n\n    return result",
+    problem: "It returns 0 for [1, 2, 3]",
+  };
+  const answer = {
+    status: "answered",
+    mode: "debug",
+    model: "claude-sonnet-5-5",
+    createdAt: "2026-10-24T12:00:00.000Z",
+    response: {
+      mode: "debug",
+      outcome: "diagnosed",
+      diagnosis: "The return is inside the loop.",
+      explanation: "It returns after the first item.",
+      confirmed: ["return is indented under the loop."],
+      hypotheses: [],
+      missingInfo: [],
+      correctedCode: { language: "python", code: "def total(xs):\n    result = 0\n" },
+      changes: [{ change: "Moved return out of the loop.", reason: "So every item is added first." }],
+      nextSteps: ["Call total([1, 2, 3]) and expect 6."],
+    },
+  };
+
+  it("posts to /api/debug with the code byte for byte and the Bearer header", async () => {
+    const fetchMock = mockFetch(async () => Response.json(answer));
+    const result = await askDebug(debugRequest, CODE);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/debug");
+    expect(url).not.toContain(CODE);
+    expect(init.headers).toMatchObject({ Authorization: `Bearer ${CODE}` });
+    expect(JSON.parse(init.body as string)).toEqual(debugRequest);
+    expect(JSON.parse(init.body as string).code).toBe(debugRequest.code);
+    expect(result).toEqual(answer);
+  });
+
+  it("maps field errors for code and problem, ignoring unknown fields", async () => {
+    mockFetch(async () =>
+      Response.json(
+        {
+          status: "error",
+          code: "invalid_request",
+          message: "Fix it",
+          fieldErrors: { code: "Paste the code", problem: "Too short", hacker: "<b>x</b>" },
+        },
+        { status: 400 },
+      ),
+    );
+    expect(await askDebug(debugRequest, CODE)).toEqual({
+      status: "error",
+      code: "invalid_request",
+      message: "Fix it",
+      fieldErrors: { code: "Paste the code", problem: "Too short" },
+    });
+  });
+
+  it("rejects an answer that breaks the Debug contract", async () => {
+    const broken = { ...answer, response: { ...answer.response, changes: [] } };
+    mockFetch(async () => Response.json(broken));
+    expect(await askDebug(debugRequest, CODE)).toMatchObject({ status: "error", code: "malformed_output" });
+  });
+
+  it("rejects corrected code in a different language from the request", async () => {
+    const wrong = {
+      ...answer,
+      response: { ...answer.response, correctedCode: { language: "java", code: "class A {}" } },
+    };
+    mockFetch(async () => Response.json(wrong));
+    expect(await askDebug(debugRequest, CODE)).toMatchObject({ status: "error", code: "malformed_output" });
+  });
+
+  it("turns a network error into a typed failure", async () => {
+    mockFetch(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    expect(await askDebug(debugRequest, CODE)).toMatchObject({ status: "error", code: "network" });
   });
 });

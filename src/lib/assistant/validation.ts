@@ -1,6 +1,8 @@
 import type {
   CodeSnippet,
+  DebugChange,
   DebugRequest,
+  DebugResponse,
   FieldErrors,
   LearnerLevel,
   LearnRequest,
@@ -18,7 +20,8 @@ export const LIMITS = {
   questionMin: 10,
   questionMax: 2000,
   codeMax: 10000,
-  errorMessageMax: 4000,
+  problemMin: 10,
+  problemMax: 4000,
   solutionMax: 10000,
   topicMax: 60,
 } as const;
@@ -34,6 +37,21 @@ export const LEARN_OUTPUT_LIMITS = {
   followUpMax: 3,
   itemMax: 200,
   exampleCodeMax: 1500,
+} as const;
+
+/*
+ * Upper bounds for a Debug answer. The corrected code may be a little longer
+ * than the submitted code (`LIMITS.codeMax`), never much longer.
+ */
+export const DEBUG_OUTPUT_LIMITS = {
+  diagnosisMax: 400,
+  explanationMax: 3000,
+  listMax: 5,
+  missingInfoMax: 4,
+  changesMax: 8,
+  nextStepsMin: 1,
+  itemMax: 300,
+  correctedCodeMax: 12000,
 } as const;
 
 export const LEARNER_LEVELS: readonly LearnerLevel[] = ["beginner", "basics", "comfortable"];
@@ -53,16 +71,18 @@ export function validateLearn(req: LearnRequest): FieldErrors<LearnRequest> {
 
 export function validateDebug(req: DebugRequest): FieldErrors<DebugRequest> {
   const errors: FieldErrors<DebugRequest> = {};
-  const code = req.code.trim();
-  const errorMessage = req.errorMessage.trim();
-  if (!code && !errorMessage) {
-    errors.code = "Paste the code that isn’t working, the error message, or both.";
-  }
-  if (req.code.length > LIMITS.codeMax) {
+  const problem = req.problem.trim();
+  if (!req.code.trim()) {
+    errors.code = "Paste the code that isn’t working.";
+  } else if (req.code.length > LIMITS.codeMax) {
     errors.code = `Code is too long: keep it under ${LIMITS.codeMax} characters.`;
   }
-  if (req.errorMessage.length > LIMITS.errorMessageMax) {
-    errors.errorMessage = `Error message is too long: keep it under ${LIMITS.errorMessageMax} characters.`;
+  if (!problem) {
+    errors.problem = "Describe the problem: paste the error message, or say what you expected to happen.";
+  } else if (problem.length < LIMITS.problemMin) {
+    errors.problem = `Add a little more detail: at least ${LIMITS.problemMin} characters.`;
+  } else if (problem.length > LIMITS.problemMax) {
+    errors.problem = `Keep the description under ${LIMITS.problemMax} characters.`;
   }
   return errors;
 }
@@ -153,5 +173,84 @@ export function parseLearnResponse(value: unknown): LearnResponse | null {
     ...(snippet ? { example: snippet } : {}),
     keyPoints: keyPoints.map((point) => point.trim()),
     followUpQuestions: followUpQuestions.map((question) => question.trim()),
+  };
+}
+
+/**
+ * Checks the shape of a Debug request body that arrived as untrusted JSON.
+ * Code keeps its indentation; only trailing whitespace is dropped. Content
+ * rules (empty, too long) stay in `validateDebug`.
+ */
+export function parseDebugRequest(body: unknown): DebugRequest | null {
+  if (!isRecord(body) || body.mode !== "debug") return null;
+  const { language, code, problem } = body;
+  if (!LANGUAGES.includes(language as CodeSnippet["language"])) return null;
+  if (typeof code !== "string" || typeof problem !== "string") return null;
+  return {
+    mode: "debug",
+    language: language as CodeSnippet["language"],
+    code: code.trimEnd(),
+    problem: problem.trim(),
+  };
+}
+
+function isChangeList(value: unknown, max: number, itemMax: number): value is DebugChange[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= max &&
+    value.every(
+      (item) => isRecord(item) && isText(item.change, itemMax) && isText(item.reason, itemMax),
+    )
+  );
+}
+
+/**
+ * Checks model output against the `DebugResponse` contract, including the
+ * rules that link fields: an answer that needs more information lists what
+ * is missing and contains no corrected code; corrected code comes with at
+ * least one explained change and stays in the student's language. Corrected
+ * code is kept byte for byte. Returns `null` for anything else.
+ */
+export function parseDebugResponse(
+  value: unknown,
+  requestLanguage: CodeSnippet["language"],
+): DebugResponse | null {
+  if (!isRecord(value)) return null;
+  const L = DEBUG_OUTPUT_LIMITS;
+  const { outcome, diagnosis, explanation, confirmed, hypotheses, missingInfo, correctedCode, changes, nextSteps } =
+    value;
+  if (outcome !== "diagnosed" && outcome !== "needs_more_info") return null;
+  if (!isText(diagnosis, L.diagnosisMax) || !isText(explanation, L.explanationMax)) return null;
+  if (!isTextList(confirmed, 0, L.listMax, L.itemMax)) return null;
+  if (!isTextList(hypotheses, 0, L.listMax, L.itemMax)) return null;
+  if (!isTextList(missingInfo, 0, L.missingInfoMax, L.itemMax)) return null;
+  if (!isChangeList(changes, L.changesMax, L.itemMax)) return null;
+  if (!isTextList(nextSteps, L.nextStepsMin, L.listMax, L.itemMax)) return null;
+
+  let snippet: CodeSnippet | undefined;
+  if (correctedCode !== null && correctedCode !== undefined) {
+    if (!isRecord(correctedCode)) return null;
+    const { language, code } = correctedCode;
+    if (!LANGUAGES.includes(language as CodeSnippet["language"])) return null;
+    if (requestLanguage !== "other" && language !== requestLanguage) return null;
+    if (!isText(code, L.correctedCodeMax)) return null;
+    snippet = { language: language as CodeSnippet["language"], code };
+  }
+
+  if (outcome === "needs_more_info" && (missingInfo.length === 0 || snippet)) return null;
+  if (snippet && changes.length === 0) return null;
+
+  const trimAll = (items: string[]) => items.map((item) => item.trim());
+  return {
+    mode: "debug",
+    outcome,
+    diagnosis: diagnosis.trim(),
+    explanation: explanation.trim(),
+    confirmed: trimAll(confirmed),
+    hypotheses: trimAll(hypotheses),
+    missingInfo: trimAll(missingInfo),
+    ...(snippet ? { correctedCode: snippet } : {}),
+    changes: changes.map(({ change, reason }) => ({ change: change.trim(), reason: reason.trim() })),
+    nextSteps: trimAll(nextSteps),
   };
 }

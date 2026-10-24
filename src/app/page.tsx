@@ -79,7 +79,7 @@ export default function HomePage() {
           </div>
           <figcaption className="flex items-center gap-1.5 text-xs text-muted">
             <Icon name="info" className="size-3.5" />
-            Illustrative example. Debug mode isn&apos;t connected to the AI yet.
+            Illustrative example. Real Debug answers come from Claude and aren&apos;t run or tested.
           </figcaption>
         </figure>
       </section>
@@ -157,10 +157,11 @@ export default function HomePage() {
             What&apos;s live
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-relaxed">
-            Learn is connected: your question goes to Claude, Anthropic&apos;s AI model, and the
-            answer is checked before it&apos;s shown. Debug and Practice still check your input
-            and show the exact request CodeBuddy would send instead of an answer. Accounts and
-            saved learning history come in later milestones.
+            Learn and Debug are connected: your question or code goes to Claude,
+            Anthropic&apos;s AI model, and the answer is checked before it&apos;s shown. CodeBuddy
+            never runs your code. Practice still checks your input and shows the exact request
+            CodeBuddy would send instead of an answer. Accounts and saved learning history come in
+            later milestones.
           </p>
         </section>
 

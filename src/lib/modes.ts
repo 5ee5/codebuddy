@@ -26,6 +26,8 @@ export interface ModeConfig {
   responseSections: readonly string[];
   /** True when the mode calls the AI; false while it only shows a local preview. */
   connected: boolean;
+  /** Text of the form's submit button. */
+  submitLabel: string;
   icon: IconName;
 }
 
@@ -42,6 +44,7 @@ export const MODES: readonly ModeConfig[] = [
       "a plain-language explanation, a short code example, key points to remember and follow-up questions to explore.",
     responseSections: ["Explanation", "Code example", "Key points", "Follow-up questions"],
     connected: true,
+    submitLabel: "Ask CodeBuddy",
     icon: "learn",
   },
   {
@@ -50,12 +53,13 @@ export const MODES: readonly ModeConfig[] = [
     label: "Debug",
     tagline: "Fix an error",
     description:
-      "Paste your code and the error message. CodeBuddy explains what went wrong and guides you towards the fix, step by step.",
+      "Paste your code and describe what goes wrong. CodeBuddy explains the likely cause, suggests a fix and tells you what it changed and why.",
     examplePrompt: "Why do I get “IndexError: list index out of range”?",
     responseOutline:
-      "a summary of the problem, the most likely cause, a suggested fix and tips for avoiding it next time.",
-    responseSections: ["What went wrong", "Likely cause", "Suggested fix", "Tips for next time"],
-    connected: false,
+      "a diagnosis, an explanation, the corrected code, what changed and why, and next steps.",
+    responseSections: ["Diagnosis", "Explanation", "Corrected code", "Changes explained", "Next steps"],
+    connected: true,
+    submitLabel: "Debug my code",
     icon: "debug",
   },
   {
@@ -70,6 +74,7 @@ export const MODES: readonly ModeConfig[] = [
       "a verdict on your solution, specific feedback, the next hint if you need it and an improved version to compare with.",
     responseSections: ["Verdict", "Feedback", "Next hint", "Improved solution"],
     connected: false,
+    submitLabel: "Preview request",
     icon: "practice",
   },
 ];
