@@ -1,36 +1,232 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CodeBuddy
 
-## Getting Started
+CodeBuddy is an AI programming tutor for beginners. It helps students understand programming concepts, work out why their code doesn't behave as expected, and practise with small exercises. It explains things the way a patient teacher would: in plain language, at the learner's level, and with the reasoning behind each answer.
 
-First, run the development server:
+It started as a final school project, *„Mākslīgā intelekta programmēšanas asistents iesācējiem”* (AI programming assistant for beginners), and is built with Next.js and Anthropic's Claude models.
+
+## Features
+
+CodeBuddy has three modes. **Learn and Debug are connected to Claude. Practice is not connected to the AI yet.**
+
+### Learn: understand a concept (AI-powered)
+
+- Ask a question about any programming idea (10–2,000 characters), or start from one of six example topics: variables, if statements, loops, functions, lists and recursion.
+- Choose your level (*Beginner*, *Basics* or *Comfortable*). The explanation and vocabulary adapt to it.
+- The answer contains:
+  - a plain-language explanation;
+  - an optional short code example, with a Copy button;
+  - key points to remember;
+  - follow-up questions to explore next.
+
+### Debug: fix an error (AI-powered)
+
+- Choose a language: Python, JavaScript, Java, C++, C# or Other.
+- Paste your code (up to 10,000 characters) and describe the problem (10–4,000 characters). That can be the full error message, or what you expected to happen and what happened instead.
+- "Load an example" fills in a sample bug to try.
+- The answer contains:
+  - a **diagnosis** of the likely problem;
+  - a beginner-friendly **explanation** that refers to your code;
+  - **what's certain** (facts visible in your code or error), kept separate from **possible causes that aren't confirmed**;
+  - **corrected code**, when there's enough information, with a Copy button that keeps indentation and line breaks exactly;
+  - **changes explained**: each change and the reason for it;
+  - **next steps** for checking the fix or learning the concept.
+- If the code and description aren't enough, CodeBuddy says so. It lists the missing information instead of guessing, and offers no corrected code.
+- Failed requests offer **Try again**, and **Start a new debug session** clears the form after an answer.
+- Your code is **never run or compiled**. CodeBuddy only reads and analyses it.
+
+### Practice: solve an exercise (preview only)
+
+- Four built-in beginner exercises:
+
+  | Exercise | Language | Difficulty | Hints |
+  |---|---|---|---|
+  | Say hello | Python | Easy | 3 |
+  | Add up a list | Python | Easy | 3 |
+  | FizzBuzz | JavaScript | Medium | 3 |
+  | Count the vowels | Python | Medium | 5 |
+
+- Each exercise has a description, a requirements checklist, starter code, and hints you can open one at a time. A counter shows how many hints you've used.
+- You write your solution in a code editor with line numbers. It's pre-filled with the starter code, and "Reset to starter code" restores it.
+- **Drafts are kept separately for each exercise while the page is open.** Switching exercises doesn't lose your work, but drafts aren't saved, so reloading the page discards them.
+- **Limitation:** Practice doesn't evaluate solutions yet. Submitting checks your input locally and shows the request CodeBuddy *would* send. Nothing is sent, and you get no verdict or feedback.
+
+### Across the app
+
+- A responsive layout: a sidebar on larger screens, and a bottom tab bar on phones.
+- Light and dark themes that follow your system setting.
+- Labelled form fields with inline validation messages, and a skip link to the main content.
+
+## Technology stack
+
+| Area | Technology (version from `package.json`) |
+|---|---|
+| Framework | [Next.js](https://nextjs.org) `16.4.3` (App Router, Turbopack) |
+| UI | [React](https://react.dev) `19.3.0` |
+| Language | [TypeScript](https://www.typescriptlang.org) `^5` (strict mode) |
+| Styling | [Tailwind CSS](https://tailwindcss.com) `^4` via `@tailwindcss/turbopack` |
+| AI | [`@anthropic-ai/sdk`](https://www.npmjs.com/package/@anthropic-ai/sdk) `1.3.0` (Claude Messages API with structured JSON output) |
+| Tests | [Vitest](https://vitest.dev) `4.1.12` |
+| Linting | ESLint `^9` with `eslint-config-next` `16.4.3` |
+| Fonts | Geist, Geist Mono and Fraunces through `next/font` |
+
+## Prerequisites
+
+- **Node.js 20.9 or newer.** That's the minimum for Next.js 16, and the Vitest version used supports Node 20, 22 and 24+. Node 20 has reached end-of-life, so a current LTS release (Node 22 or 24) is recommended.
+- **npm.** The repository includes a `package-lock.json`.
+- **An Anthropic API key** from the [Claude Console](https://platform.claude.com), for the AI features. Requests to Claude are billed to your Anthropic account. Without a key, the app still runs, but Learn and Debug report that the tutor isn't set up.
+
+## Getting started
+
+```bash
+git clone https://github.com/5ee5/codebuddy.git
+cd codebuddy
+npm install
+cp .env.example .env.local
+```
+
+Open `.env.local` and replace the placeholder values (see [Environment variables](#environment-variables)). To generate an access code:
+
+```bash
+openssl rand -base64 18
+```
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open [http://localhost:3000](http://localhost:3000). If port 3000 is in use, the terminal shows the address Next.js picked instead. Restart the dev server after you change `.env.local`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`.env.local` is ignored by Git and must never be committed.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment variables
 
-## Learn More
+All three variables are **server-only and required** for Learn and Debug. Never prefix them with `NEXT_PUBLIC_`, because that would expose them to the browser.
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Required | What it does |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Yes | Your Anthropic API key. It's used only on the server to call Claude. |
+| `ANTHROPIC_MODEL` | Yes | The Claude model ID used by Learn and Debug. There is no built-in default. `.env.example` suggests `claude-sonnet-5-5`; see Anthropic's [models overview](https://platform.claude.com/docs/en/about-claude/models/overview) for current IDs. |
+| `CODEBUDDY_ACCESS_CODE` | Yes | A shared code that users must enter before Learn or Debug can call the paid API. It must be at least 16 characters, or the AI features stay disabled. |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+# .env.local (placeholders only)
+ANTHROPIC_API_KEY=your-anthropic-api-key
+ANTHROPIC_MODEL=claude-sonnet-5-5
+CODEBUDDY_ACCESS_CODE=replace-with-a-long-random-code
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+If any variable is missing, or the access code is too short, the pages still load. Learn and Debug then answer with a "not set up" message instead of calling Claude.
 
-## Deploy on Vercel
+## Available routes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Pages
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Route | Description |
+|---|---|
+| `/` | Home page: an introduction, the three modes and what's currently live |
+| `/learn` | Learn mode (AI-powered) |
+| `/debug` | Debug mode (AI-powered) |
+| `/practice` | Practice mode (preview only, not connected to the AI) |
+
+Unknown paths show a custom "page not found" page.
+
+### API endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/learn` | Answers a Learn question |
+| `POST /api/debug` | Diagnoses a Debug submission |
+
+Both endpoints:
+- accept JSON only;
+- accept requests from the app's own pages only, not from other websites;
+- require the access code as `Authorization: Bearer <access code>`.
+
+The web interface handles all of this for you. Learners type the access code into the form once, and it's remembered for that browser tab only (`sessionStorage`).
+
+Responses are JSON, either an answer or an error with a short, user-friendly message. If something fails, the error message never includes provider details, stack traces or secrets. There is no API endpoint for Practice.
+
+## Development and quality checks
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the development server |
+| `npm run lint` | Run ESLint |
+| `npx tsc --noEmit` | Type-check the project (there's no separate npm script for this) |
+| `npm test` | Run the Vitest test suite once |
+| `npx vitest` | Run Vitest in watch mode |
+| `npm run build` | Create a production build |
+| `npm start` | Serve the production build (run `npm run build` first) |
+
+The tests run in Node and replace the Anthropic client with a mock. **They don't need an API key and never spend credits.** They cover:
+- request and response validation;
+- the API routes' security checks and error handling;
+- the browser client;
+- code formatting and copying;
+- the answer views and the Debug session state.
+
+## Architecture overview
+
+```
+src/
+├── app/                  Pages (App Router) and API route handlers
+│   ├── api/learn/        POST /api/learn
+│   ├── api/debug/        POST /api/debug
+│   ├── learn/ debug/ practice/   Mode pages
+│   └── page.tsx, layout.tsx, not-found.tsx, globals.css
+├── components/           UI: app shell, navigation, mode workspaces, answer views
+│   ├── workspace/        Learn, Debug and Practice forms (client components)
+│   └── ui/               Reusable pieces: code editor, code block, copy button, fields
+├── lib/
+│   ├── assistant/        Shared request/response types, validation and the browser client
+│   ├── server/           Server-only code: configuration, access checks, Claude calls, prompts
+│   ├── modes.ts          The three modes (labels, descriptions, sections)
+│   ├── exercises.ts      Practice exercises
+│   └── languages.ts      Supported programming languages
+└── test/                 Small helpers for the test suite
+```
+
+- **Browser:** each workspace validates input with the same rules the server uses, then sends the request to its API route. Answers are checked against the expected format again before they're shown.
+- **Server:** each API route checks, in order:
+  1. that the request comes from the app itself;
+  2. the request type and size;
+  3. that the server configuration is complete;
+  4. the access code;
+  5. the request fields;
+  6. a shared usage cap.
+
+  Only then does it call Claude. The model's reply must match a strict JSON format, and anything that doesn't match is rejected instead of shown.
+- **Server-only boundary:** the API key, model and access code are read only in `src/lib/server/`, whose modules are marked `server-only`. They never reach the browser bundle.
+
+## Security and limitations
+
+- **AI answers can be wrong.** Treat explanations and corrected code as suggestions. Read them, run the code yourself, and check the result.
+- **Code is never executed.** CodeBuddy sends submitted code to Claude for analysis only. It doesn't run, compile or test anything, and it says so in Debug answers.
+- **Submitted text goes to Anthropic.** Learn questions and Debug code and descriptions are sent to the Anthropic API for processing. Don't paste secrets or private data into the forms.
+- **API key:** it's kept on the server and is never sent to the browser, logged or returned in responses.
+- **Access code:** this is a single shared code, not a user account system.
+  - Anyone who knows it can use the AI features.
+  - Over plain HTTP, for example on a local network, it can be read from network traffic. Use the app only on networks you trust, or serve it over HTTPS.
+- **Usage cap:** the server allows a limited number of AI requests per hour and at the same time, shared by all users.
+  - The cap is kept in memory, so it resets when the server restarts and isn't shared between multiple server instances.
+  - Requests are never retried automatically, to avoid unexpected charges.
+- **Not production-ready.** There are no user accounts, no per-user limits and no persistent storage, and the app hasn't been prepared or reviewed for public deployment.
+
+## Project status and future work
+
+**Current state:**
+- Learn and Debug are fully working with Claude.
+- Practice offers exercises, hints and an editor, but no AI feedback.
+- Nothing is stored between sessions.
+
+**Known limitations and possible improvements** (planned or under consideration, not implemented):
+- AI feedback for Practice solutions. The response format is already defined in the code, but nothing produces it yet.
+- User accounts and saved learning history. The app mentions these as later milestones.
+- Streaming AI answers, so long Debug answers appear progressively instead of after a wait.
+- Per-user rate limiting and a sturdier access mechanism before any public deployment.
+
+## License
+
+This repository doesn't currently include a license file.
