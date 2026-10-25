@@ -80,6 +80,7 @@ const paths = {
     </>
   ),
   check: <path d="M20 6 9 17l-5-5" />,
+  cross: <path d="M18 6 6 18M6 6l12 12" />,
   copy: (
     <>
       <rect x="9" y="9" width="12" height="12" rx="2" />

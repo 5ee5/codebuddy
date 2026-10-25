@@ -3,8 +3,9 @@
  *
  * Every request carries a `mode` discriminant, so `AssistantRequest` can be
  * narrowed with a simple `switch (request.mode)`, both in the browser and in
- * the server-side route handlers. Learn is connected to the Claude API
- * (`/api/learn`); Debug and Practice still produce local previews only.
+ * the server-side route handlers. Learn and Debug are connected to the Claude
+ * API (`/api/learn`, `/api/debug`). Practice checks answers locally without AI
+ * (`lib/practice`); `PracticeRequest`/`PracticeResponse` are kept for future AI feedback.
  */
 import type { ModeId } from "@/lib/modes";
 

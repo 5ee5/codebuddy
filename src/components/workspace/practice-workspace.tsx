@@ -9,8 +9,7 @@ import { Field } from "@/components/ui/field";
 import { RadioCards, type RadioCardOption } from "@/components/ui/radio-cards";
 import { buttonGhost, eyebrow, panel } from "@/components/ui/styles";
 import { FormFooter } from "@/components/workspace/form-footer";
-import { previewRequest } from "@/lib/assistant/client";
-import type { AssistantPreview, PracticeRequest } from "@/lib/assistant/types";
+import type { PracticeRequest } from "@/lib/assistant/types";
 import { hasErrors, validatePractice } from "@/lib/assistant/validation";
 import {
   DIFFICULTY_LABELS,
@@ -21,6 +20,8 @@ import {
 } from "@/lib/exercises";
 import { LANGUAGE_EXTENSIONS, LANGUAGE_LABELS } from "@/lib/languages";
 import { getMode } from "@/lib/modes";
+import { checkAnswer } from "@/lib/practice/check";
+import type { PracticeCheck } from "@/lib/practice/types";
 
 const mode = getMode("practice");
 
@@ -59,8 +60,8 @@ export function PracticeWorkspace() {
   const [solutions, setSolutions] = useState<Record<string, string>>({});
   const [hintsOpened, setHintsOpened] = useState<Record<string, number[]>>({});
   const [submitted, setSubmitted] = useState(false);
-  const [preview, setPreview] = useState<AssistantPreview<PracticeRequest> | null>(null);
-  const [pending, setPending] = useState(false);
+  // The last check for each exercise, kept alongside its draft.
+  const [checks, setChecks] = useState<Record<string, PracticeCheck | undefined>>({});
   const panelRef = useRef<HTMLElement>(null);
 
   const exercise: Exercise = getExercise(exerciseId) ?? EXERCISES[0];
@@ -76,6 +77,11 @@ export function PracticeWorkspace() {
     hintsOpened: opened.length,
   };
   const errors = submitted ? validatePractice(request, exercise.starterCode) : {};
+  const check = checks[exercise.id] ?? null;
+
+  function setCheck(value: PracticeCheck | undefined) {
+    setChecks((prev) => ({ ...prev, [exercise.id]: value }));
+  }
 
   function setSolution(value: string) {
     setSolutions((prev) => ({ ...prev, [exercise.id]: value }));
@@ -88,21 +94,17 @@ export function PracticeWorkspace() {
     });
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  /** Checks the answer in the browser by reading it; the code is never run or sent. */
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
     if (hasErrors(validatePractice(request, exercise.starterCode))) {
-      setPreview(null);
+      setCheck(undefined);
       document.getElementById("practice-solution")?.focus();
       return;
     }
-    setPending(true);
-    try {
-      setPreview(await previewRequest(request));
-      panelRef.current?.focus();
-    } finally {
-      setPending(false);
-    }
+    setCheck(checkAnswer(exercise, request.solution));
+    panelRef.current?.focus();
   }
 
   return (
@@ -118,7 +120,6 @@ export function PracticeWorkspace() {
               onChange={(id) => {
                 setExerciseId(id);
                 setSubmitted(false);
-                setPreview(null);
               }}
               columns="sm:grid-cols-2"
             />
@@ -219,14 +220,15 @@ export function PracticeWorkspace() {
         </div>
 
         <FormFooter
-          pending={pending}
+          pending={false}
+          label={mode.submitLabel}
           secondary={
             <button
               type="button"
               onClick={() => {
                 setSolution(exercise.starterCode);
                 setSubmitted(false);
-                setPreview(null);
+                setCheck(undefined);
               }}
               className={buttonGhost}
             >
@@ -237,7 +239,13 @@ export function PracticeWorkspace() {
         />
       </form>
 
-      <ResponsePanel ref={panelRef} mode={mode} preview={preview} pending={pending} />
+      <ResponsePanel
+        ref={panelRef}
+        mode={mode}
+        check={check}
+        checkStale={check !== null && check.checkedCode !== request.solution}
+        pending={false}
+      />
     </div>
   );
 }

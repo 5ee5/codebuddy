@@ -4,6 +4,7 @@ import type { Ref } from "react";
 import { DebugAnswer } from "@/components/debug-answer";
 import { Icon } from "@/components/icons";
 import { LearnAnswer } from "@/components/learn-answer";
+import { PracticeFeedback } from "@/components/practice-feedback";
 import { CodeBlock } from "@/components/ui/code-block";
 import { CopyButton } from "@/components/ui/copy-button";
 import { buttonSecondary, eyebrow, panel } from "@/components/ui/styles";
@@ -14,6 +15,8 @@ import type {
   LearnRequest,
 } from "@/lib/assistant/types";
 import type { ModeConfig, ModeId } from "@/lib/modes";
+import { VERDICT_LABELS } from "@/lib/practice/check";
+import type { PracticeCheck } from "@/lib/practice/types";
 
 interface ResponsePanelProps {
   mode: ModeConfig;
@@ -21,6 +24,10 @@ interface ResponsePanelProps {
   preview?: AssistantPreview | null;
   /** Real result from the server, for connected modes (Learn and Debug). */
   result?: AssistantResult<LearnRequest> | AssistantResult<DebugRequest> | null;
+  /** Practice: the result of checking an answer locally, without running it. */
+  check?: PracticeCheck | null;
+  /** Practice: the code has changed since `check` was made. */
+  checkStale?: boolean;
   pending: boolean;
   /** When set, a failed request offers "Try again" (sends the same request). */
   onRetry?: () => void;
@@ -30,7 +37,7 @@ interface ResponsePanelProps {
   ref?: Ref<HTMLElement>;
 }
 
-/** Wording for the modes that call the AI. */
+/** Wording for the modes that give real answers (Learn and Debug call the AI). */
 const LIVE_COPY: Partial<Record<ModeId, { empty: string; sent: string; pending: string }>> = {
   learn: {
     empty: "No question yet",
@@ -42,18 +49,26 @@ const LIVE_COPY: Partial<Record<ModeId, { empty: string; sent: string; pending: 
     sent: "Your code and description are sent to Claude",
     pending: "CodeBuddy is reading your code. A long program can take up to a minute…",
   },
+  practice: {
+    empty: "No answer checked yet",
+    sent: "CodeBuddy checks your code against the exercise without running it or sending it anywhere",
+    pending: "Checking your answer…",
+  },
 };
 
 /**
  * Where the tutor's answer appears. Connected modes show a validated AI
- * answer or a friendly error; preview-only modes show the typed request that
- * would be sent, with a clear notice that nothing left the browser. The
- * empty state outlines the sections an answer has.
+ * answer or a friendly error; Practice shows the result of checking an answer
+ * locally; preview-only modes show the typed request that would be sent, with
+ * a clear notice that nothing left the browser. The empty state outlines the
+ * sections an answer has.
  */
 export function ResponsePanel({
   mode,
   preview = null,
   result = null,
+  check = null,
+  checkStale = false,
   pending,
   onRetry,
   onNewSession,
@@ -69,18 +84,22 @@ export function ResponsePanel({
       ? "AI answer"
       : result?.status === "error"
         ? "Not answered"
-        : preview
-          ? "Preview"
-          : "Waiting";
+        : check
+          ? "Checked"
+          : preview
+            ? "Preview"
+            : "Waiting";
 
   const announcement =
     result?.status === "answered"
       ? "CodeBuddy’s answer is ready."
       : result?.status === "error"
         ? result.message
-        : preview
-          ? `Request preview ready at ${time}. The AI is not connected for this mode yet, so nothing was sent.`
-          : "";
+        : check
+          ? `Answer checked: ${VERDICT_LABELS[check.verdict]}. ${check.summary}`
+          : preview
+            ? `Request preview ready at ${time}. The AI is not connected for this mode yet, so nothing was sent.`
+            : "";
 
   return (
     <section
@@ -135,6 +154,8 @@ export function ResponsePanel({
               </button>
             )}
           </div>
+        ) : check ? (
+          <PracticeFeedback check={check} stale={checkStale} />
         ) : preview ? (
           <div className="flex flex-col gap-4">
             <div className="border-l-2 border-status bg-surface-2 px-4 py-3 text-sm leading-relaxed">
@@ -163,7 +184,7 @@ export function ResponsePanel({
 }
 
 function EmptyState({ mode }: { mode: ModeConfig }) {
-  const live = mode.connected ? LIVE_COPY[mode.id] : undefined;
+  const live = LIVE_COPY[mode.id];
   return (
     <div>
       <p className="font-display text-xl font-semibold">{live?.empty ?? "Nothing sent yet"}</p>
@@ -184,7 +205,7 @@ function EmptyState({ mode }: { mode: ModeConfig }) {
         )}
       </p>
       <p className={`${eyebrow} mt-6 mb-2`}>
-        {mode.connected ? "Your answer will include" : "A connected answer will include"}
+        {live ? "Your answer will include" : "A connected answer will include"}
       </p>
       <ol className="divide-y divide-line border-y border-line">
         {mode.responseSections.map((section, i) => (

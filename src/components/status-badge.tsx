@@ -1,7 +1,7 @@
 /**
  * Quiet, persistent reminder of what is live: Learn and Debug answers come
- * from the AI, Practice is still a preview. A status dot plus text, noticeable
- * without competing with page content.
+ * from the AI; Practice checks answers locally, without AI. A status dot plus
+ * text, noticeable without competing with page content.
  */
 export function StatusBadge({ className = "" }: { className?: string }) {
   return (

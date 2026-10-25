@@ -159,9 +159,9 @@ export default function HomePage() {
           <p className="mt-2 max-w-3xl text-sm leading-relaxed">
             Learn and Debug are connected: your question or code goes to Claude,
             Anthropic&apos;s AI model, and the answer is checked before it&apos;s shown. CodeBuddy
-            never runs your code. Practice still checks your input and shows the exact request
-            CodeBuddy would send instead of an answer. Accounts and saved learning history come in
-            later milestones.
+            never runs your code. Practice checks your answer against each exercise&apos;s
+            requirements and test cases right in your browser, without running it or sending it
+            anywhere. Accounts and saved learning history come in later milestones.
           </p>
         </section>
 

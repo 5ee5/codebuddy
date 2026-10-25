@@ -24,7 +24,7 @@ export interface ModeConfig {
    * matching `*Response` type in `lib/assistant/types.ts`.
    */
   responseSections: readonly string[];
-  /** True when the mode calls the AI; false while it only shows a local preview. */
+  /** True when the mode calls the AI. Practice checks answers locally instead. */
   connected: boolean;
   /** Text of the form's submit button. */
   submitLabel: string;
@@ -71,10 +71,10 @@ export const MODES: readonly ModeConfig[] = [
       "Pick a beginner-friendly exercise, write your own solution and get feedback, with hints whenever you get stuck.",
     examplePrompt: "Write a function that counts the vowels in a word.",
     responseOutline:
-      "a verdict on your solution, specific feedback, the next hint if you need it and an improved version to compare with.",
-    responseSections: ["Verdict", "Feedback", "Next hint", "Improved solution"],
+      "a verdict on your solution, which requirements and test cases pass, and a hint for what to fix next.",
+    responseSections: ["Verdict", "Requirements", "Test cases", "Next hint"],
     connected: false,
-    submitLabel: "Preview request",
+    submitLabel: "Check answer",
     icon: "practice",
   },
 ];

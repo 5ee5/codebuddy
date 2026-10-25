@@ -20,7 +20,8 @@ export function endpointFor(mode: AssistantRequest["mode"]): string {
 export const CLIENT_TIMEOUT_MS = 70_000;
 
 /**
- * Local stand-in for modes that are not connected yet (Practice).
+ * Local stand-in for modes that are not connected yet. No mode uses it at the
+ * moment: Practice checks answers locally with `lib/practice/check.ts`.
  * It makes no network calls: it only echoes the typed request back so the UI
  * can show exactly what would be sent.
  */

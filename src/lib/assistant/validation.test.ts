@@ -9,6 +9,7 @@ import {
   parseLearnResponse,
   validateDebug,
   validateLearn,
+  validatePractice,
 } from "@/lib/assistant/validation";
 
 const validAnswer = {
@@ -230,5 +231,25 @@ describe("parseDebugResponse", () => {
     ["a non-object", "The bug is on line 4."],
   ])("rejects %s", (_label, value) => {
     expect(parseDebugResponse(value, "python")).toBeNull();
+  });
+});
+
+// --------------------------------------------------------------- Practice ----
+
+describe("validatePractice", () => {
+  const starter = "def greet(name):\n    # Your code here\n    pass\n";
+  const base = { mode: "practice" as const, exerciseId: "greet-user", language: "python" as const, hintsOpened: 0 };
+
+  it("accepts a changed solution", () => {
+    expect(validatePractice({ ...base, solution: 'def greet(name):\n    return f"Hello, {name}!"' }, starter)).toEqual({});
+  });
+
+  it.each([
+    ["an empty solution", "", /Write your solution/],
+    ["a whitespace-only solution", " \n\t ", /Write your solution/],
+    ["the unchanged starter code", starter.trimEnd(), /still the starter code/],
+    ["an oversized solution", "x".repeat(LIMITS.solutionMax + 1), /too long/],
+  ])("rejects %s", (_label, solution, message) => {
+    expect(validatePractice({ ...base, solution }, starter).solution).toMatch(message);
   });
 });

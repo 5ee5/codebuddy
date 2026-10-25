@@ -6,7 +6,7 @@ It started as a final school project, *„Mākslīgā intelekta programmēšanas
 
 ## Features
 
-CodeBuddy has three modes. **Learn and Debug are connected to Claude. Practice is not connected to the AI yet.**
+CodeBuddy has three modes. **Learn and Debug are connected to Claude. Practice checks answers locally, without AI.**
 
 ### Learn: understand a concept (AI-powered)
 
@@ -34,21 +34,27 @@ CodeBuddy has three modes. **Learn and Debug are connected to Claude. Practice i
 - Failed requests offer **Try again**, and **Start a new debug session** clears the form after an answer.
 - Your code is **never run or compiled**. CodeBuddy only reads and analyses it.
 
-### Practice: solve an exercise (preview only)
+### Practice: solve an exercise (checked locally)
 
 - Four built-in beginner exercises:
 
   | Exercise | Language | Difficulty | Hints |
   |---|---|---|---|
-  | Say hello | Python | Easy | 3 |
+  | Say hello | Python | Easy | 2 |
   | Add up a list | Python | Easy | 3 |
   | FizzBuzz | JavaScript | Medium | 3 |
-  | Count the vowels | Python | Medium | 5 |
+  | Count the vowels | Python | Medium | 3 |
 
 - Each exercise has a description, a requirements checklist, starter code, and hints you can open one at a time. A counter shows how many hints you've used.
 - You write your solution in a code editor with line numbers. It's pre-filled with the starter code, and "Reset to starter code" restores it.
 - **Drafts are kept separately for each exercise while the page is open.** Switching exercises doesn't lose your work, but drafts aren't saved, so reloading the page discards them.
-- **Limitation:** Practice doesn't evaluate solutions yet. Submitting checks your input locally and shows the request CodeBuddy *would* send. Nothing is sent, and you get no verdict or feedback.
+- **Check answer** checks your solution in the browser and shows:
+  - a verdict: *Correct*, *Partly correct*, *Not correct yet*, or *Checks passed, run it to confirm*;
+  - each requirement, marked as passed, not met or not checked, with what CodeBuddy found;
+  - test cases with the expected result and, where it can be worked out, what your code gives (for example `total([]) → 1`, expected `0`);
+  - one hint for what to fix next, without giving away the solution.
+- **Your code is never run.** It isn't sent to a server or to the AI either. CodeBuddy reads the code as text (`src/lib/practice/`). For each exercise it recognises a few common ways of writing the solution, such as a running-total loop, an `if / else if` chain or an f-string. For those it works out the test results exactly. Code written another way still gets the requirement checks, but the verdict says it can't be confirmed without running it. It is never marked correct on a guess.
+- **Limitation:** solutions outside the recognised shapes (for example `while` loops, recursion, `str.count`, or FizzBuzz built up as a string) can't be fully verified. Run them yourself and compare with the expected values shown.
 
 ### Across the app
 
@@ -128,7 +134,7 @@ If any variable is missing, or the access code is too short, the pages still loa
 | `/` | Home page: an introduction, the three modes and what's currently live |
 | `/learn` | Learn mode (AI-powered) |
 | `/debug` | Debug mode (AI-powered) |
-| `/practice` | Practice mode (preview only, not connected to the AI) |
+| `/practice` | Practice mode (answers checked locally, not connected to the AI) |
 
 Unknown paths show a custom "page not found" page.
 
@@ -182,6 +188,7 @@ src/
 ├── lib/
 │   ├── assistant/        Shared request/response types, validation and the browser client
 │   ├── server/           Server-only code: configuration, access checks, Claude calls, prompts
+│   ├── practice/         Practice answer checker: reads code as text, never runs it
 │   ├── modes.ts          The three modes (labels, descriptions, sections)
 │   ├── exercises.ts      Practice exercises
 │   └── languages.ts      Supported programming languages
@@ -203,7 +210,7 @@ src/
 ## Security and limitations
 
 - **AI answers can be wrong.** Treat explanations and corrected code as suggestions. Read them, run the code yourself, and check the result.
-- **Code is never executed.** CodeBuddy sends submitted code to Claude for analysis only. It doesn't run, compile or test anything, and it says so in Debug answers.
+- **Code is never executed.** CodeBuddy sends Debug code to Claude for analysis only, and Practice answers are checked by reading them in the browser. Nothing is run or compiled, and the app says so in Debug answers and Practice results.
 - **Submitted text goes to Anthropic.** Learn questions and Debug code and descriptions are sent to the Anthropic API for processing. Don't paste secrets or private data into the forms.
 - **API key:** it's kept on the server and is never sent to the browser, logged or returned in responses.
 - **Access code:** this is a single shared code, not a user account system.
@@ -218,10 +225,11 @@ src/
 
 **Current state:**
 - Learn and Debug are fully working with Claude.
-- Practice offers exercises, hints and an editor, but no AI feedback.
+- Practice offers exercises, hints and an editor, and checks answers locally with requirement checks and test cases. It gives no AI feedback.
 - Nothing is stored between sessions.
 
 **Known limitations and possible improvements** (planned or under consideration, not implemented):
+- Full verification for every Practice solution. This would need a real sandbox, such as Pyodide or a JavaScript interpreter in an isolated worker or iframe with time limits and no network access, or an isolated server-side runner.
 - AI feedback for Practice solutions. The response format is already defined in the code, but nothing produces it yet.
 - User accounts and saved learning history. The app mentions these as later milestones.
 - Streaming AI answers, so long Debug answers appear progressively instead of after a wait.

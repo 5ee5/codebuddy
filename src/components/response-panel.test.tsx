@@ -2,11 +2,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ResponsePanel } from "@/components/response-panel";
 import type { AssistantResult, DebugRequest, LearnRequest } from "@/lib/assistant/types";
+import { getExercise } from "@/lib/exercises";
 import { getMode } from "@/lib/modes";
+import { checkAnswer } from "@/lib/practice/check";
 import { accessibleText } from "@/test/markup";
 
 const debug = getMode("debug");
 const learn = getMode("learn");
+const practice = getMode("practice");
 const noop = () => {};
 
 const debugAnswer: AssistantResult<DebugRequest> = {
@@ -99,5 +102,34 @@ describe("ResponsePanel for Learn (unchanged)", () => {
     expect(t).toContain("Key points");
     expect(t).not.toContain("Likely problem");
     expect(t).not.toContain("Start a new debug session");
+  });
+});
+
+describe("ResponsePanel for Practice", () => {
+  const practiceText = (props: Partial<Parameters<typeof ResponsePanel>[0]> = {}) =>
+    accessibleText(renderToStaticMarkup(<ResponsePanel mode={practice} pending={false} {...props} />));
+
+  it("describes local checking in the empty state", () => {
+    const t = practiceText();
+    expect(t).toContain("No answer checked yet");
+    expect(t).toContain("Check answer");
+    expect(t).toContain("without running it or sending it anywhere");
+    expect(t).toContain("Your answer will include");
+    for (const section of ["Verdict", "Requirements", "Test cases", "Next hint"]) expect(t).toContain(section);
+    expect(t).not.toContain("isn't connected to the AI yet");
+  });
+
+  it("shows a check result and announces the verdict", () => {
+    const check = checkAnswer(getExercise("greet-user")!, 'def greet(name):\n    return f"Hello, {name}!"');
+    const t = practiceText({ check });
+    expect(t).toContain("Checked");
+    expect(t).toContain("Answer checked: Correct.");
+    expect(t).toContain("Requirements");
+    expect(t).not.toContain("AI not connected yet");
+  });
+
+  it("passes the stale flag through", () => {
+    const check = checkAnswer(getExercise("greet-user")!, "def greet(name):\n    return name");
+    expect(practiceText({ check, checkStale: true })).toContain("You’ve changed your code since this check.");
   });
 });
