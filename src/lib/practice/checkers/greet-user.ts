@@ -11,6 +11,7 @@ import { scanPython, type ScannedSource } from "@/lib/practice/source";
 import {
   boundOnce,
   checkPythonFunction,
+  constantReturnResults,
   hasPrint,
   statements,
   testsWithoutFunction,
@@ -84,6 +85,9 @@ export function checkGreetUser(code: string): CheckerOutput {
         }
       : { id: "no-print", label: "Gives the greeting back instead of printing it", status: "pass" },
   );
+
+  const constant = constantReturnResults(scan, lines, fn, cases, NAMES.map((name) => `Hello, ${name}!`));
+  if (constant) return { checks: [...checks, ...constant.checks], tests: constant.tests };
 
   const model = topLevelSupported(scan, lines, fn) ? greetModel(scan, lines, fn) : null;
   const results = cases.map((c, i) => (model ? model(NAMES[i]) : null));

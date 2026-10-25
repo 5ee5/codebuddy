@@ -3,7 +3,9 @@ import {
   isOp,
   isPlaceholder,
   lineTokens,
+  plainString,
   pythonFunctions,
+  pythonRepr,
   type PyFunction,
   type PyLine,
 } from "@/lib/practice/python";
@@ -231,4 +233,65 @@ function simpleTopLevel(scan: ScannedSource, line: PyLine): boolean {
 export function topLevelSupported(scan: ScannedSource, lines: PyLine[], fn: PyFunction): boolean {
   const own = new Set([fn.def, ...fn.body]);
   return lines.every((line) => own.has(line) || (line.indent === 0 && simpleTopLevel(scan, line)));
+}
+
+interface Constant {
+  value: number | string | null;
+  /** As Python would show it, e.g. `0`, `0.0`, `"Hi"`, `None`. */
+  display: string;
+}
+
+/**
+ * The value of a function whose whole body is `return <literal>`: a number,
+ * a plain string or None. Anything else, including any other statement in the
+ * body or unsupported top-level code, is `null`.
+ */
+function constantReturn(scan: ScannedSource, lines: PyLine[], fn: PyFunction): Constant | null {
+  if (!topLevelSupported(scan, lines, fn)) return null;
+  const body = statements(fn, scan);
+  const tokens = body.length === 1 ? lineTokens(scan, body[0]) : null;
+  if (!tokens || !isName(tokens[0], "return")) return null;
+  const negative = tokens.length === 3 && isOp(tokens[1], "-");
+  const literal = tokens.length === 2 || negative ? tokens[tokens.length - 1] : undefined;
+
+  if (literal?.kind === "num" && Number.isFinite(literal.value)) {
+    const value = negative ? -literal.value : literal.value;
+    return { value, display: literal.float && Number.isInteger(value) ? `${value}.0` : String(value) };
+  }
+  if (negative) return null;
+  const text = plainString(literal);
+  if (text !== null) return { value: text, display: pythonRepr(text) };
+  if (isName(literal, "None")) return { value: null, display: "None" };
+  return null;
+}
+
+/**
+ * Test results for a function that returns a constant, worked out from the
+ * literal alone. A constant can't follow its input, so when any test fails a
+ * blocking check says so plainly. `null` when the body isn't a constant return.
+ */
+export function constantReturnResults(
+  scan: ScannedSource,
+  lines: PyLine[],
+  fn: PyFunction,
+  cases: { label: string; call: string; expected: string }[],
+  expected: readonly (number | string)[],
+): CheckerOutput | null {
+  const constant = constantReturn(scan, lines, fn);
+  if (!constant) return null;
+  const tests = cases.map((c, i) => ({ ...c, actual: constant.display, passed: constant.value === expected[i] }));
+  if (tests.every((test) => test.passed)) return { checks: [], tests };
+  return {
+    checks: [
+      {
+        id: "uses-input",
+        label: "Uses its input to work out the result",
+        status: "fail",
+        blocking: true,
+        detail: `${fn.name} always returns ${constant.display}, whatever it is given.`,
+        hint: `The answer depends on the value passed in, so ${fn.name} needs to use its parameter to work it out.`,
+      },
+    ],
+    tests,
+  };
 }

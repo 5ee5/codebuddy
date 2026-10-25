@@ -3,6 +3,7 @@ import { lineAt, scanPython, type ScannedSource } from "@/lib/practice/source";
 import {
   boundOnce,
   checkPythonFunction,
+  constantReturnResults,
   statements,
   testsWithoutFunction,
   topLevelSupported,
@@ -171,6 +172,9 @@ export function checkSumList(code: string): CheckerOutput {
       : { id: "return-after-loop", label: "Returns only after the loop has finished", status: "pass" };
     checks.push(check);
   }
+
+  const constant = constantReturnResults(scan, lines, fn, cases, CASES.map((c) => c.expected));
+  if (constant) return { checks: [...checks, ...constant.checks], tests: constant.tests };
 
   const model = topLevelSupported(scan, lines, fn) ? sumModel(scan, lines, fn) : null;
   if (!model) return { checks, tests: unverifiedTests(cases) };

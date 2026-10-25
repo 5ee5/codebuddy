@@ -13,6 +13,7 @@ import { scanPython, type ScannedSource } from "@/lib/practice/source";
 import {
   boundOnce,
   checkPythonFunction,
+  constantReturnResults,
   statements,
   testsWithoutFunction,
   topLevelSupported,
@@ -274,6 +275,10 @@ export function checkCountVowels(code: string): CheckerOutput {
     expected: String(expected),
   }));
   if (!fn) return { checks, tests: testsWithoutFunction(checks, cases) };
+
+  const constant = constantReturnResults(scan, lines, fn, cases, CASES.map((c) => c.expected));
+  if (constant) return { checks: [...checks, ...constant.checks], tests: constant.tests };
+
   const model = topLevelSupported(scan, lines, fn) ? vowelModel(scan, lines, fn) : null;
   if (!model) return { checks, tests: unverifiedTests(cases) };
 

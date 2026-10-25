@@ -415,3 +415,65 @@ describe("fizzbuzz", () => {
     expect(result.tests.every((t) => t.passed === null)).toBe(true);
   });
 });
+
+// ------------------------------------------------------- constant returns ----
+
+describe("constant returns", () => {
+  it.each([
+    ["count-vowels", "def count_vowels(text): return 0", "0"],
+    ["count-vowels", "def count_vowels(text):\n    return 0", "0"],
+    ["greet-user", "def greet(name):\n    return 0", "0"],
+    ["sum-list", "def total(numbers):\n    return 0", "0"],
+    ["sum-list", "def total(numbers):\n    return -1", "-1"],
+    ["sum-list", "def total(numbers):\n    return 0.0", "0.0"],
+    ["greet-user", "def greet(name):\n    return None", "None"],
+    ["greet-user", 'def greet(name):\n    return "Hello, Ada!"', '"Hello, Ada!"'],
+    ["count-vowels", 'def count_vowels(text):\n    """Count them."""\n    return ""', '""'],
+    ["sum-list", "def total(numbers):\n    return 27\n\nprint(total([4, 8, 15]))  # 27", "27"],
+  ])("%s: %j is incorrect, with its actual value in every test", (id, code, actual) => {
+    const result = check(id, code);
+    expect(result.verdict).toBe("incorrect");
+    expect(result.checks.find((c) => c.id === "uses-input")).toMatchObject({ status: "fail", blocking: true });
+    expect(result.checks.find((c) => c.id === "uses-input")?.detail).toContain(`always returns ${actual}`);
+    expect(result.tests.length).toBeGreaterThan(0);
+    expect(result.tests.every((t) => t.actual === actual && t.passed !== null)).toBe(true);
+    expect(result.hint).toMatch(/needs to use its parameter/);
+  });
+
+  it("still marks the tests a constant happens to satisfy as passed", () => {
+    const vowels = check("count-vowels", "def count_vowels(text): return 0");
+    expect(vowels.tests.filter((t) => t.passed).map((t) => t.call)).toEqual([
+      'count_vowels("")',
+      'count_vowels("rhythm")',
+    ]);
+    const sum = check("sum-list", "def total(numbers):\n    return 0");
+    expect(sum.tests.filter((t) => t.passed).map((t) => t.call)).toEqual(["total([])"]);
+    const greet = check("greet-user", 'def greet(name):\n    return "Hello, Ada!"');
+    expect(greet.tests.map((t) => t.passed)).toEqual([true, false, false]);
+  });
+
+  it("doesn't add the input check to solutions that use their input", () => {
+    for (const [id, code] of [
+      ["greet-user", 'def greet(name):\n    return f"Hello, {name}!"'],
+      ["sum-list", "def total(numbers):\n    t = 0\n    for n in numbers:\n        t += n\n    return t"],
+      ["count-vowels", 'def count_vowels(text):\n    return sum(1 for c in text.lower() if c in "aeiou")'],
+    ]) {
+      const result = check(id, code);
+      expect(result.verdict).toBe("correct");
+      expect(result.checks.some((c) => c.id === "uses-input")).toBe(false);
+    }
+  });
+
+  it.each([
+    ["an expression", "count-vowels", "def count_vowels(text):\n    return len(text) * 0"],
+    ["a parenthesised literal", "sum-list", "def total(numbers):\n    return (0)"],
+    ["a boolean", "count-vowels", "def count_vowels(text):\n    return False"],
+    ["a byte string", "greet-user", 'def greet(name):\n    return b"Hello"'],
+    ["unsupported top-level code", "sum-list", "import math\n\ndef total(numbers):\n    return 0"],
+    ["another statement first", "greet-user", 'def greet(name):\n    x = name\n    return 0'],
+  ])("stays unverified, not incorrect, with %s", (_label, id, code) => {
+    const result = check(id, code);
+    expect(result.verdict).toBe("unverified");
+    expect(result.checks.some((c) => c.id === "uses-input")).toBe(false);
+  });
+});
