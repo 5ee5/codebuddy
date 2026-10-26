@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useActionState, useEffect } from "react";
 import { FormMessage, SubmitButton } from "@/components/auth/form-parts";
+import { ResendConfirmation } from "@/components/auth/resend-confirmation";
 import { Field } from "@/components/ui/field";
 import { control, panel } from "@/components/ui/styles";
 import { signIn } from "@/lib/auth/actions";
@@ -10,8 +11,10 @@ import type { AuthFormState } from "@/lib/auth/validation";
 
 const INITIAL: AuthFormState = {};
 
-/** Messages for `?error=`, set by the GitHub callback. Unknown values show nothing. */
+/** Messages for `?error=`, set by the GitHub callback and email links. Unknown values show nothing. */
 const LINK_ERRORS: Record<string, string> = {
+  link_invalid:
+    "That link has expired or was already used. Ask for a new one: “Forgot your password?” below, or sign in to get a new confirmation email.",
   github_not_connected:
     "That GitHub account isn’t connected to CodeBuddy yet. Create an account with your class code first, then connect GitHub on your Account page.",
   github_failed: "Signing in with GitHub didn’t work. Try again, or use your email and password.",
@@ -64,6 +67,7 @@ export function LoginForm() {
           )}
         </Field>
         <FormMessage message={state.message ?? linkError} ok={state.ok} />
+        {state.unconfirmed && state.email && <ResendConfirmation email={state.email} />}
       </div>
       <SubmitButton pending={pending} label="Sign in" pendingLabel="Signing in…" />
     </form>

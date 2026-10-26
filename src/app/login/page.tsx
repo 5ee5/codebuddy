@@ -48,6 +48,11 @@ export default function LoginPage() {
       <Suspense fallback={<div aria-hidden="true" className={`${panel} h-80`} />}>
         <LoginForm />
       </Suspense>
+      <p className="text-sm">
+        <Link href="/forgot-password" className="font-semibold text-ink underline underline-offset-4">
+          Forgot your password?
+        </Link>
+      </p>
       <Suspense fallback={null}>
         <GitHubSignIn />
       </Suspense>

@@ -21,6 +21,8 @@ export interface AuthFormState {
   fieldErrors?: AuthFieldErrors;
   /** Sent back so the email field keeps its value after a failed attempt. */
   email?: string;
+  /** The account exists but its email isn't confirmed yet: offer "Send it again". */
+  unconfirmed?: boolean;
 }
 
 export function validateSignIn(email: string, password: string): AuthFieldErrors {

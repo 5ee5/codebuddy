@@ -109,6 +109,15 @@ export default function PrivacyPage() {
           .
         </p>
         <p>
+          <strong>Resend</strong> sends CodeBuddy’s emails: the link to confirm your email when you
+          sign up, and password-reset links. It handles your email address and those emails, and is
+          based in the United States. See{" "}
+          <a href="https://resend.com/legal/privacy-policy" className={link}>
+            Resend’s privacy policy
+          </a>
+          . CodeBuddy sends no other emails.
+        </p>
+        <p>
           <strong>Cloudflare</strong> delivers the website and secures the connection, so it sees
           technical details such as your IP address.
         </p>

@@ -115,7 +115,20 @@ Learn and Debug are only for signed-in users. Students create their own account 
 
    The GitHub buttons appear by themselves once the provider is on (CodeBuddy checks every few minutes).
 
-Keep public sign-up switched off in Supabase (step 2). CodeBuddy creates sign-up accounts itself with the secret key, and only when the class code is right, so the code can't be skipped by calling Supabase directly. Accounts are created already confirmed, so CodeBuddy doesn't need to send any email.
+Keep public sign-up switched off in Supabase (step 2). CodeBuddy creates sign-up accounts itself with the secret key, and only when the class code is right, so the code can't be skipped by calling Supabase directly.
+
+### Set up emails (optional)
+
+With emails set up, new students must confirm their email address before their account works, and "Forgot your password?" sends a reset link. Without them, accounts are created already confirmed and no email is ever sent.
+
+CodeBuddy sends these emails itself through [Resend](https://resend.com), so Supabase's own email settings and templates aren't used.
+
+1. Create a free Resend account. Under **Domains**, add your domain and copy the DNS records it shows (DKIM and SPF on a `send.` subdomain) into your DNS provider, for example Cloudflare. Wait until Resend shows the domain as **Verified**.
+2. Under **API Keys**, create a key with **Sending access**. Put it in `RESEND_API_KEY`.
+3. Set `EMAIL_FROM` to a sender on that domain, such as `CodeBuddy <noreply@your-domain>`, and `CODEBUDDY_SITE_URL` to the site's public address, such as `https://codebuddy.example`.
+4. Restart the server. `SUPABASE_SECRET_KEY` must be set too: CodeBuddy uses it to create the one-time links.
+
+Email links open `/auth/confirm`, which asks for one click before using the link. School mail systems often open links automatically to scan them, and that would otherwise use up the one-time link. Links always point to `CODEBUDDY_SITE_URL`, never to an address taken from the request, so a forged `Host` header can't redirect someone's reset link.
 
 ### Create the database tables
 
@@ -151,6 +164,9 @@ The first four variables are **server-only and required** for Learn and Debug; t
 | `ANTHROPIC_MODEL` | Yes | The Claude model ID used by Learn and Debug. There is no built-in default. `.env.example` suggests `claude-sonnet-5-5`; see Anthropic's [models overview](https://platform.claude.com/docs/en/about-claude/models/overview) for current IDs. |
 | `SUPABASE_URL` | Yes | Your Supabase project URL, for example `https://abcdefgh.supabase.co`. |
 | `SUPABASE_PUBLISHABLE_KEY` | Yes | Your Supabase project's publishable (`anon`) key. Never use the secret `service_role` key here. |
+| `RESEND_API_KEY` | No | Resend API key for sign-up confirmation and password-reset emails. Needs `EMAIL_FROM` and `CODEBUDDY_SITE_URL` too. |
+| `EMAIL_FROM` | No | The sender of those emails, e.g. `CodeBuddy <noreply@your-domain>`; the domain must be verified in Resend. |
+| `CODEBUDDY_SITE_URL` | No | The public address used in email links, e.g. `https://codebuddy.example` (no path). |
 | `CODEBUDDY_SIGNUP_CODE` | No | The class code students enter at `/signup`, at least 8 characters. Without it (or with `SUPABASE_SECRET_KEY` missing), sign-up is closed. |
 | `SUPABASE_SECRET_KEY` | No | Your Supabase project's **secret** key (`sb_secret_…`, or the legacy `service_role` key). It's used only to create accounts at sign-up and to let students delete their own account. Without it, both say they aren't set up. It bypasses every access rule, so keep it in `.env.local` only. |
 
@@ -162,6 +178,9 @@ SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 SUPABASE_SECRET_KEY=your-supabase-secret-key   # optional, for sign-up and account deletion
 CODEBUDDY_SIGNUP_CODE=your-class-code           # optional, opens /signup
+RESEND_API_KEY=your-resend-api-key              # optional, with the next two: emails
+EMAIL_FROM=CodeBuddy <noreply@your-domain>
+CODEBUDDY_SITE_URL=https://codebuddy.example
 ```
 
 If any variable is missing, the pages still load. Learn and Debug then answer with a "not set up" message instead of calling Claude, and signing in says it isn't set up.
@@ -184,6 +203,9 @@ If any variable is missing, the pages still load. Learn and Debug then answer wi
 | `/history/<id>` | One saved answer |
 | `/privacy` | What is stored, who processes it, for how long, and how to delete it |
 | `/goodbye` | Shown after an account is deleted |
+| `/forgot-password` | Request a password-reset email |
+| `/auth/confirm` | Where links in emails open; asks for one click before using the link |
+| `/reset-password` | Choose a new password after a reset link |
 
 `/learn`, `/debug`, `/account` and `/history` need a signed-in user. Visitors who aren't signed in are sent to `/login` and brought back afterwards. Home and Practice are open to everyone.
 
@@ -277,7 +299,8 @@ supabase/
 - **API key:** it's kept on the server and is never sent to the browser, logged or returned in responses.
 - **Accounts:** sign-in uses Supabase Auth with email and password. Accounts come from sign-up with the class code, or are created by you in Supabase.
   - Sign-up allows about 10 wrong class codes per network address per hour, and 60 new accounts per hour in total. Both limits are kept in memory and reset when the server restarts.
-  - Email addresses aren't verified, so a student who mistypes theirs can still sign in with it, but nothing is ever sent to it.
+  - With emails set up, new accounts only work once the email address is confirmed. Without them, addresses aren't verified: a student who mistypes theirs can still sign in with it, but nothing is ever sent to it.
+  - "Forgot your password?" and "Send it again" give the same reply whether or not the account exists, and allow 20 requests per network address per hour.
   - GitHub sign-in only works for GitHub accounts already connected to a CodeBuddy account (or with the same email). Because public sign-up is off, Supabase refuses to create new accounts through GitHub, so the class code can't be skipped that way.
   - The session cookie is `httpOnly` and `SameSite=Lax`, so page scripts can't read it and other websites can't use it to send requests. The API routes also reject requests from other origins.
   - Over plain HTTP, for example on a local network, passwords and session cookies can be read from network traffic. Serve the app over HTTPS.

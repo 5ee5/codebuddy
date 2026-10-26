@@ -9,8 +9,16 @@ import { PASSWORD_MIN_LENGTH, type AuthFormState } from "@/lib/auth/validation";
 
 const INITIAL: AuthFormState = {};
 
-/** New password, typed twice. Accounts start with a password set by the admin. */
-export function PasswordForm() {
+interface PasswordFormProps {
+  title?: string;
+  description?: string;
+}
+
+/** New password, typed twice: on the Account page, and after a password-reset link. */
+export function PasswordForm({
+  title = "Change your password",
+  description = "If someone gave you your first password, replace it with one only you know.",
+}: PasswordFormProps) {
   const [state, formAction, pending] = useActionState(changePassword, INITIAL);
 
   useEffect(() => {
@@ -23,11 +31,9 @@ export function PasswordForm() {
       <div className="flex flex-col gap-6 p-5 sm:p-6">
         <div>
           <h2 id="password-title" className="text-lg font-semibold">
-            Change your password
+            {title}
           </h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted">
-            If someone gave you your first password, replace it with one only you know.
-          </p>
+          <p className="mt-1 text-sm leading-relaxed text-muted">{description}</p>
         </div>
         <Field
           id="new-password"

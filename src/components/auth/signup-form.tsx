@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useActionState, useEffect } from "react";
 import { FormMessage, SubmitButton } from "@/components/auth/form-parts";
+import { ResendConfirmation } from "@/components/auth/resend-confirmation";
 import { Field } from "@/components/ui/field";
 import { control, panel } from "@/components/ui/styles";
 import { signUp } from "@/lib/auth/actions";
@@ -27,6 +28,20 @@ export function SignupForm() {
     const first = FIELD_ORDER.find(([field]) => state.fieldErrors?.[field]);
     if (first) document.getElementById(first[1])?.focus();
   }, [state]);
+
+  // Created, waiting for the confirmation link: show that instead of the form.
+  if (state.unconfirmed && state.email) {
+    return (
+      <div className={`${panel} flex flex-col gap-5 p-5 sm:p-6`}>
+        <h2 className="text-lg font-semibold">Check your email</h2>
+        <FormMessage message={state.message} ok={state.ok} />
+        <p className="text-sm leading-relaxed text-muted">
+          Nothing there after a few minutes? Check your spam folder, or send the link again.
+        </p>
+        <ResendConfirmation email={state.email} />
+      </div>
+    );
+  }
 
   return (
     <form noValidate action={formAction} className={panel}>

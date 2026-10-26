@@ -3,8 +3,16 @@
 import { cookies, headers } from "next/headers";
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
-import { canManageAccounts, createConfirmedUser, deleteUserById, verifyPassword } from "@/lib/auth/admin";
+import { canManageAccounts, createUserAccount, deleteUserById, verifyPassword } from "@/lib/auth/admin";
 import { getSignupCode, getSupabaseConfig } from "@/lib/auth/config";
+import {
+  emailEnabled,
+  emailRequests,
+  LINK_NEXT,
+  sendConfirmationEmail,
+  sendPasswordResetEmail,
+  type LinkType,
+} from "@/lib/auth/email-links";
 import { siteOriginFrom } from "@/lib/auth/origin";
 import { LOGIN_PATH, loginPathFor, safeNextPath } from "@/lib/auth/paths";
 import { createSupabaseClient, getSignedInUser, getSupabase } from "@/lib/auth/server";
@@ -52,6 +60,14 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
   if (error) {
     if (error.code === "invalid_credentials") {
       return { message: "That email and password don’t match. Check them and try again.", email };
+    }
+    // Supabase only says this once the password is right, so it reveals nothing to a stranger.
+    if (error.code === "email_not_confirmed") {
+      return {
+        message: "Confirm your email first: open the link we sent you when you signed up.",
+        email,
+        unconfirmed: true,
+      };
     }
     logAuthFailure("sign-in", error.code ?? error.status);
     if (error.status === 429) {
@@ -102,7 +118,9 @@ export async function signUp(_previous: AuthFormState, formData: FormData): Prom
     return { message: "A lot of accounts were created in the last hour. Try again later.", email };
   }
 
-  switch (await createConfirmedUser(email, password)) {
+  // With email set up, the account only works once the student opens the link we send.
+  const confirmByEmail = emailEnabled();
+  switch (await createUserAccount(email, password, { confirmed: !confirmByEmail })) {
     case "exists":
       return { fieldErrors: { email: "There’s already an account with this email. Sign in instead." }, email };
     case "weak_password":
@@ -115,6 +133,22 @@ export async function signUp(_previous: AuthFormState, formData: FormData): Prom
   }
   recordNewAccount();
 
+  if (confirmByEmail) {
+    const sent = await sendConfirmationEmail(email);
+    return sent === "failed"
+      ? {
+          message: "Your account is created, but the confirmation email couldn’t be sent. Use “Send it again” below.",
+          email,
+          unconfirmed: true,
+        }
+      : {
+          ok: true,
+          message: `Almost done! We sent a link to ${email}. Open it to finish creating your account. It can take a minute to arrive, so check your spam folder too.`,
+          email,
+          unconfirmed: true,
+        };
+  }
+
   const next = safeNextPath(formData.get("next"));
   const supabase = await createSupabaseClient(config);
   const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -124,6 +158,76 @@ export async function signUp(_previous: AuthFormState, formData: FormData): Prom
     redirect(loginPathFor(next));
   }
   redirect(next);
+}
+
+const EMAIL_NOT_SET_UP = "Emails aren’t set up on this server. Ask the person running CodeBuddy.";
+const TOO_MANY_EMAILS = "Too many emails were requested from your network. Wait an hour, then try again.";
+const EMAIL_FAILED = "The email couldn’t be sent right now. Try again in a little while.";
+
+/**
+ * Sends a new confirmation link. The reply is the same whether or not the
+ * account exists or still needs confirming, so it can't be used to find out
+ * who has an account.
+ */
+export async function resendConfirmation(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  const email = String(formData.get("email") ?? "").trim();
+  const emailError = validateSignIn(email, "-").email;
+  if (emailError) return { fieldErrors: { email: emailError }, email, unconfirmed: true };
+  if (!emailEnabled()) return { message: EMAIL_NOT_SET_UP, email, unconfirmed: true };
+
+  const address = await clientAddress();
+  if (emailRequests.reached(address)) return { message: TOO_MANY_EMAILS, email, unconfirmed: true };
+  emailRequests.record(address);
+
+  if ((await sendConfirmationEmail(email)) === "failed") return { message: EMAIL_FAILED, email, unconfirmed: true };
+  return {
+    ok: true,
+    message: `If ${email} is waiting to be confirmed, a new link is on its way. Check your spam folder too.`,
+    email,
+    unconfirmed: true,
+  };
+}
+
+/** "Forgot password?": emails a reset link. Same reply whether or not the account exists. */
+export async function requestPasswordReset(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  const email = String(formData.get("email") ?? "").trim();
+  const emailError = validateSignIn(email, "-").email;
+  if (emailError) return { fieldErrors: { email: emailError }, email };
+  if (!emailEnabled()) return { message: EMAIL_NOT_SET_UP, email };
+
+  const address = await clientAddress();
+  if (emailRequests.reached(address)) return { message: TOO_MANY_EMAILS, email };
+  emailRequests.record(address);
+
+  if ((await sendPasswordResetEmail(email)) === "failed") return { message: EMAIL_FAILED, email };
+  return {
+    ok: true,
+    message: `If there’s an account for ${email}, we’ve sent it a link to choose a new password. It can take a minute to arrive, so check your spam folder too.`,
+    email,
+  };
+}
+
+const LINK_TYPES: readonly LinkType[] = ["email", "recovery"];
+
+/**
+ * Uses the one-time token from an email link (after the student clicked
+ * "Continue" on /auth/confirm) and signs them in. A used or expired link goes
+ * back to sign-in with a message.
+ */
+export async function confirmEmailLink(formData: FormData): Promise<void> {
+  const tokenHash = String(formData.get("token_hash") ?? "");
+  const type = String(formData.get("type") ?? "") as LinkType;
+  const invalid = `${LOGIN_PATH}?error=link_invalid`;
+  if (!/^[A-Za-z0-9_-]{8,200}$/.test(tokenHash) || !LINK_TYPES.includes(type)) redirect(invalid);
+
+  const supabase = await getSupabase();
+  if (!supabase) redirect(invalid);
+  const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
+  if (error) {
+    logAuthFailure(`verify-${type}`, error.code ?? error.status);
+    redirect(invalid);
+  }
+  redirect(LINK_NEXT[type]);
 }
 
 /** This site's public address, for the link GitHub sends people back to. */

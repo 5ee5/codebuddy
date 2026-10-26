@@ -4,7 +4,7 @@ import { getSupabaseConfig, getSupabaseSecretKey } from "@/lib/auth/config";
 
 /*
  * The only code that uses Supabase's secret key: creating an account with a
- * class code, and deleting an account. Each call gets a fresh client that
+ * class code, making one-time email links, and deleting an account. Each call gets a fresh client that
  * never stores a session or sets cookies.
  */
 
@@ -31,6 +31,12 @@ export async function verifyPassword(email: string, password: string): Promise<P
   return "ok";
 }
 
+function adminClient() {
+  const config = getSupabaseConfig();
+  const secretKey = getSupabaseSecretKey();
+  return config && secretKey ? createClient(config.url, secretKey, STATELESS) : null;
+}
+
 /** Whether this server can create and delete accounts at all. */
 export function canManageAccounts(): boolean {
   return Boolean(getSupabaseConfig() && getSupabaseSecretKey());
@@ -39,20 +45,42 @@ export function canManageAccounts(): boolean {
 export type CreateUserResult = "ok" | "exists" | "weak_password" | "unavailable";
 
 /**
- * Creates an account that is already confirmed, so no email is sent. This
- * works while public sign-up is switched off in Supabase, which keeps the
- * class code the only way in.
+ * Creates an account. It works while public sign-up is switched off in
+ * Supabase, which keeps the class code the only way in. When `confirmed` is
+ * false, the student can't sign in until they open the confirmation link.
  */
-export async function createConfirmedUser(email: string, password: string): Promise<CreateUserResult> {
-  const config = getSupabaseConfig();
-  const secretKey = getSupabaseSecretKey();
-  if (!config || !secretKey) return "unavailable";
-  const admin = createClient(config.url, secretKey, STATELESS);
-  const { error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+export async function createUserAccount(
+  email: string,
+  password: string,
+  { confirmed }: { confirmed: boolean },
+): Promise<CreateUserResult> {
+  const admin = adminClient();
+  if (!admin) return "unavailable";
+  const { error } = await admin.auth.admin.createUser({ email, password, email_confirm: confirmed });
   if (!error) return "ok";
   if (error.code === "email_exists" || error.code === "user_already_exists") return "exists";
   if (error.code === "weak_password") return "weak_password";
   console.error("[auth]", "create-user", error.code ?? error.status ?? "-");
+  return "unavailable";
+}
+
+export type EmailTokenResult = { token: string } | "not_found" | "already_confirmed" | "unavailable";
+
+/**
+ * A one-time token for a confirmation (`signup`) or password-reset
+ * (`recovery`) link. Nothing is sent: CodeBuddy emails the link itself. An
+ * unknown email never creates an account here.
+ */
+export async function generateEmailToken(type: "signup" | "recovery", email: string): Promise<EmailTokenResult> {
+  const admin = adminClient();
+  if (!admin) return "unavailable";
+  const { data, error } = await admin.auth.admin.generateLink({ type, email } as Parameters<
+    typeof admin.auth.admin.generateLink
+  >[0]);
+  if (!error && data.properties?.hashed_token) return { token: data.properties.hashed_token };
+  if (error?.code === "user_not_found") return "not_found";
+  if (error?.code === "email_exists") return "already_confirmed";
+  console.error("[auth]", `generate-${type}-link`, error?.code ?? error?.status ?? "-");
   return "unavailable";
 }
 
@@ -61,10 +89,8 @@ export async function createConfirmedUser(email: string, password: string): Prom
  * and Practice progress with it (`on delete cascade`).
  */
 export async function deleteUserById(userId: string): Promise<boolean> {
-  const config = getSupabaseConfig();
-  const secretKey = getSupabaseSecretKey();
-  if (!config || !secretKey) return false;
-  const admin = createClient(config.url, secretKey, STATELESS);
+  const admin = adminClient();
+  if (!admin) return false;
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) {
     console.error("[auth]", "delete-user", error.code ?? error.status ?? "-");

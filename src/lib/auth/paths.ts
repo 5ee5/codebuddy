@@ -3,8 +3,11 @@
  * sign in. Pure functions, shared by the proxy, the sign-in action and tests.
  */
 
-/** Learn and Debug call the paid AI; Account and History hold the user's own data. Practice stays open. */
-export const PROTECTED_PATHS = ["/learn", "/debug", "/account", "/history"] as const;
+/**
+ * Learn and Debug call the paid AI; Account and History hold the user's own
+ * data; Reset password needs the session from a reset link. Practice stays open.
+ */
+export const PROTECTED_PATHS = ["/learn", "/debug", "/account", "/history", "/reset-password"] as const;
 
 export const LOGIN_PATH = "/login";
 export const SIGNUP_PATH = "/signup";
