@@ -1,7 +1,7 @@
 import { failure } from "@/lib/assistant/errors";
 import type { AssistantAnswer, DebugRequest } from "@/lib/assistant/types";
 import { hasErrors, parseDebugRequest, validateDebug } from "@/lib/assistant/validation";
-import { acquireSlot } from "@/lib/server/access";
+import { acquireSlot } from "@/lib/server/usage-cap";
 import { createAnthropicClient } from "@/lib/server/anthropic";
 import { answerDebug } from "@/lib/server/debug";
 import {
@@ -15,7 +15,7 @@ import {
  * POST /api/debug: diagnoses a student's bug with the paid AI API.
  *
  * Same protections and order as /api/learn: same origin, body type and size,
- * server configuration, access code, request validation, then the usage cap
+ * server configuration, signed-in user, request validation, then the usage cap
  * that Learn and Debug share. The submitted code and problem are never
  * logged; failures return fixed, friendly messages only.
  */

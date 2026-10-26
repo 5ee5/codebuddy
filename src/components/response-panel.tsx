@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { Ref } from "react";
 import { DebugAnswer } from "@/components/debug-answer";
 import { Icon } from "@/components/icons";
@@ -14,6 +15,7 @@ import type {
   DebugRequest,
   LearnRequest,
 } from "@/lib/assistant/types";
+import { loginPathFor } from "@/lib/auth/paths";
 import type { ModeConfig, ModeId } from "@/lib/modes";
 import { VERDICT_LABELS } from "@/lib/practice/check";
 import type { PracticeCheck } from "@/lib/practice/types";
@@ -147,6 +149,12 @@ export function ResponsePanel({
               No answer this time
             </p>
             <p className="mt-1 text-muted">{result.message}</p>
+            {result.code === "access_denied" && (
+              <Link href={loginPathFor(mode.href)} className={`${buttonSecondary} mt-3`}>
+                <Icon name="signIn" className="size-4" />
+                Sign in
+              </Link>
+            )}
             {onRetry && (
               <button type="button" onClick={onRetry} className={`${buttonSecondary} mt-3`}>
                 <Icon name="reset" className="size-4" />

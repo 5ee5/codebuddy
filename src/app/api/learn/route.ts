@@ -1,7 +1,7 @@
 import type { AssistantAnswer, LearnRequest } from "@/lib/assistant/types";
 import { failure } from "@/lib/assistant/errors";
 import { hasErrors, parseLearnRequest, validateLearn } from "@/lib/assistant/validation";
-import { acquireSlot } from "@/lib/server/access";
+import { acquireSlot } from "@/lib/server/usage-cap";
 import { createAnthropicClient } from "@/lib/server/anthropic";
 import { answerLearn } from "@/lib/server/learn";
 import {
@@ -16,7 +16,7 @@ import {
  *
  * Every check that can reject a request runs before the provider is called,
  * in this order: same origin, body type and size, server configuration,
- * access code (all in `guardAssistantPost`), then request validation and the
+ * signed-in user (all in `guardAssistantPost`), then request validation and the
  * shared usage cap. Responses are always a JSON `AssistantResult` with a
  * fixed, friendly message on failure.
  */

@@ -49,13 +49,13 @@ interface PostOptions<R extends AssistantRequest> {
 }
 
 /**
- * Sends a request to the mode's server route. The access code travels only in
- * the `Authorization` header, never in the URL. Never throws: network errors,
- * timeouts and unexpected replies all become a typed `AssistantFailure`.
+ * Sends a request to the mode's server route. The browser adds the sign-in
+ * session cookie itself, because the route is on the same site. Never
+ * throws: network errors, timeouts and unexpected replies all become a typed
+ * `AssistantFailure`.
  */
 async function postAssistant<R extends AssistantRequest>(
   request: R,
-  accessCode: string,
   { parse, fields, timeoutMs, signal }: PostOptions<R>,
 ): Promise<AssistantResult<R>> {
   const timeout = AbortSignal.timeout(timeoutMs);
@@ -69,10 +69,7 @@ async function postAssistant<R extends AssistantRequest>(
   try {
     res = await fetch(endpointFor(request.mode), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessCode}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
       signal: combined,
       cache: "no-store",
@@ -127,10 +124,9 @@ function readResult<R extends AssistantRequest>(
 /** Sends a Learn question to `/api/learn`. */
 export function askLearn(
   request: LearnRequest,
-  accessCode: string,
   signal?: AbortSignal,
 ): Promise<AssistantResult<LearnRequest>> {
-  return postAssistant(request, accessCode, {
+  return postAssistant(request, {
     parse: parseLearnResponse,
     fields: ["question", "level", "topic"],
     timeoutMs: CLIENT_TIMEOUT_MS,
@@ -144,10 +140,9 @@ export const DEBUG_CLIENT_TIMEOUT_MS = 100_000;
 /** Sends code and a problem description to `/api/debug`. */
 export function askDebug(
   request: DebugRequest,
-  accessCode: string,
   signal?: AbortSignal,
 ): Promise<AssistantResult<DebugRequest>> {
-  return postAssistant(request, accessCode, {
+  return postAssistant(request, {
     parse: (response) => parseDebugResponse(response, request.language),
     fields: ["language", "code", "problem"],
     timeoutMs: DEBUG_CLIENT_TIMEOUT_MS,

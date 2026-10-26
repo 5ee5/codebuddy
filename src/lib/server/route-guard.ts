@@ -1,26 +1,32 @@
 import "server-only";
 import { failure } from "@/lib/assistant/errors";
 import type { AssistantRequest, AssistantResult } from "@/lib/assistant/types";
-import { checkAccessCode } from "@/lib/server/access";
+import { getSupabaseConfig } from "@/lib/auth/config";
+import { getSignedInUser, type SignedInUser } from "@/lib/auth/server";
 import { getServerConfig, type ServerConfig } from "@/lib/server/anthropic";
 
 /*
  * The checks every paid assistant route runs before it looks at the request
  * itself, in this order: same origin, body type and size, server
- * configuration, access code, JSON parse. Each route then validates its own
- * request and takes a usage slot before calling the provider.
+ * configuration, signed-in user, JSON parse. Each route then validates its
+ * own request and takes a usage slot before calling the provider.
  */
 
 export function jsonResult<R extends AssistantRequest>(body: AssistantResult<R>, status: number): Response {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-/** Only codes and IDs: never the submitted text, the answer, the key or the access code. */
+/** Only codes and IDs: never the submitted text, the answer, the key or the session. */
 export function logFailure(route: string, code: string, status: number, requestId?: string | null): void {
   console.error(`[${route}]`, code, status, requestId ?? "-");
 }
 
-/** Browsers send `Origin` on cross-site POSTs; reject any that is not this host. */
+/**
+ * Browsers send `Origin` on cross-site POSTs; reject any that is not this
+ * host. The session is a cookie, so this check (with the JSON-only body and
+ * `SameSite=Lax` cookies) is what stops other websites from sending requests
+ * as the user.
+ */
 function isSameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return true;
@@ -61,7 +67,7 @@ export interface GuardOptions {
 }
 
 export type GuardResult =
-  | { ok: true; config: ServerConfig; body: unknown }
+  | { ok: true; config: ServerConfig; user: SignedInUser; body: unknown }
   | { ok: false; response: Response };
 
 export async function guardAssistantPost(
@@ -84,16 +90,17 @@ export async function guardAssistantPost(
   }
 
   const config = getServerConfig();
-  if (!config) {
+  if (!config || !getSupabaseConfig()) {
     logFailure(route, "not_configured", 503);
     return reject(jsonResult(failure("not_configured"), 503));
   }
-  if (!checkAccessCode(request.headers.get("authorization"), config.accessCode)) {
+  const user = await getSignedInUser();
+  if (!user) {
     return reject(jsonResult(failure("access_denied"), 401));
   }
 
   try {
-    return { ok: true, config, body: JSON.parse(raw) };
+    return { ok: true, config, user, body: JSON.parse(raw) };
   } catch {
     return reject(jsonResult(failure("invalid_request"), 400));
   }

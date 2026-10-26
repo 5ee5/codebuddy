@@ -1,5 +1,6 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { UserMenu, UserMenuFallback } from "@/components/auth/user-menu";
 import { LogoMark } from "@/components/icons";
 import { NavLinks } from "@/components/nav-links";
 import { StatusBadge } from "@/components/status-badge";
@@ -10,6 +11,8 @@ import { StatusBadge } from "@/components/status-badge";
  *   sidebar with full navigation from the `md` breakpoint up.
  * - On mobile a bottom tab bar provides navigation instead of a hamburger
  *   drawer: always visible, no focus trap or open/close state to manage.
+ * - The user menu reads the session at request time, so it streams in
+ *   behind <Suspense> while the rest of the shell stays static.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -25,12 +28,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             <NavLinks variant="sidebar" />
           </nav>
 
-          <div className="md:mt-auto md:space-y-2.5 md:border-t md:border-line md:px-2 md:pt-4">
-            <StatusBadge />
-            <p className="hidden text-xs leading-relaxed text-muted md:block">
-              Learn and Debug answers come from Claude. Practice checks your answers in the
-              browser without running them.
-            </p>
+          <div className="flex min-w-0 items-center gap-3 md:mt-auto md:flex-col md:items-stretch md:gap-4 md:border-t md:border-line md:pt-4">
+            <div className="hidden sm:block md:space-y-2.5 md:px-2">
+              <StatusBadge />
+              <p className="hidden text-xs leading-relaxed text-muted md:block">
+                Learn and Debug answers come from Claude. Practice checks your answers in the
+                browser without running them.
+              </p>
+            </div>
+            <Suspense fallback={<UserMenuFallback />}>
+              <UserMenu />
+            </Suspense>
           </div>
         </div>
       </header>

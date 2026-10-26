@@ -1,30 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   acquireSlot,
-  checkAccessCode,
   CONCURRENT_REQUEST_LIMIT,
   HOURLY_REQUEST_LIMIT,
   resetUsageForTests,
-} from "@/lib/server/access";
-
-const CODE = "correct-horse-battery";
-
-describe("checkAccessCode", () => {
-  it("accepts the right code as a Bearer token", () => {
-    expect(checkAccessCode(`Bearer ${CODE}`, CODE)).toBe(true);
-  });
-
-  it.each([
-    ["no header", null],
-    ["an empty header", ""],
-    ["a wrong code", "Bearer wrong-code-entirely"],
-    ["a different-length code", "Bearer x"],
-    ["a missing Bearer prefix", CODE],
-    ["another scheme", `Basic ${CODE}`],
-  ])("rejects %s", (_label, header) => {
-    expect(checkAccessCode(header, CODE)).toBe(false);
-  });
-});
+} from "@/lib/server/usage-cap";
 
 describe("acquireSlot", () => {
   beforeEach(() => resetUsageForTests());

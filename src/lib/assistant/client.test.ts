@@ -3,7 +3,6 @@ import { askDebug, askLearn, previewRequest } from "@/lib/assistant/client";
 import type { DebugRequest, LearnRequest } from "@/lib/assistant/types";
 
 const request: LearnRequest = { mode: "learn", question: "What is a variable?", level: "beginner" };
-const CODE = "test-access-code-0123456789";
 
 function mockFetch(impl: (url: string, init: RequestInit) => Promise<Response>) {
   const fetchMock = vi.fn(impl);
@@ -12,7 +11,7 @@ function mockFetch(impl: (url: string, init: RequestInit) => Promise<Response>) 
 }
 
 describe("askLearn", () => {
-  it("posts JSON with the code in the Authorization header only", async () => {
+  it("posts JSON to the same site, relying on the session cookie", async () => {
     const answer = {
       status: "answered",
       mode: "learn",
@@ -27,13 +26,14 @@ describe("askLearn", () => {
     };
     const fetchMock = mockFetch(async () => Response.json(answer));
 
-    const result = await askLearn(request, CODE);
+    const result = await askLearn(request);
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/learn");
-    expect(url).not.toContain(CODE);
     expect(init.method).toBe("POST");
-    expect(init.headers).toMatchObject({ Authorization: `Bearer ${CODE}` });
+    expect(init.headers).toEqual({ "Content-Type": "application/json" });
+    // The default `same-origin` credentials send the session cookie; nothing wider.
+    expect(init.credentials).toBeUndefined();
     expect(JSON.parse(init.body as string)).toEqual(request);
     expect(result).toEqual(answer);
   });
@@ -45,7 +45,7 @@ describe("askLearn", () => {
         { status: 400 },
       ),
     );
-    expect(await askLearn(request, CODE)).toEqual({
+    expect(await askLearn(request)).toEqual({
       status: "error",
       code: "invalid_request",
       message: "Fix it",
@@ -57,24 +57,24 @@ describe("askLearn", () => {
     mockFetch(async () => {
       throw new TypeError("Failed to fetch");
     });
-    expect(await askLearn(request, CODE)).toMatchObject({ status: "error", code: "network" });
+    expect(await askLearn(request)).toMatchObject({ status: "error", code: "network" });
   });
 
   it("turns a non-JSON reply into a typed failure", async () => {
     mockFetch(async () => new Response("<html>Bad gateway</html>", { status: 502 }));
-    expect(await askLearn(request, CODE)).toMatchObject({ status: "error", code: "unavailable" });
+    expect(await askLearn(request)).toMatchObject({ status: "error", code: "unavailable" });
   });
 
   it("rejects an answer that does not match the contract", async () => {
     mockFetch(async () =>
       Response.json({ status: "answered", model: "m", createdAt: "t", response: { explanation: 1 } }),
     );
-    expect(await askLearn(request, CODE)).toMatchObject({ status: "error", code: "malformed_output" });
+    expect(await askLearn(request)).toMatchObject({ status: "error", code: "malformed_output" });
   });
 
   it("rejects unknown error codes", async () => {
     mockFetch(async () => Response.json({ status: "error", code: "stack_trace", message: "at foo.js:1" }));
-    expect(await askLearn(request, CODE)).toMatchObject({ status: "error", code: "unavailable" });
+    expect(await askLearn(request)).toMatchObject({ status: "error", code: "unavailable" });
   });
 
   it("returns a failure instead of throwing when aborted", async () => {
@@ -84,7 +84,7 @@ describe("askLearn", () => {
       });
     });
     const controller = new AbortController();
-    const pending = askLearn(request, CODE, controller.signal);
+    const pending = askLearn(request, controller.signal);
     controller.abort();
     expect(await pending).toMatchObject({ status: "error" });
   });
@@ -130,14 +130,12 @@ describe("askDebug", () => {
     },
   };
 
-  it("posts to /api/debug with the code byte for byte and the Bearer header", async () => {
+  it("posts to /api/debug with the code byte for byte", async () => {
     const fetchMock = mockFetch(async () => Response.json(answer));
-    const result = await askDebug(debugRequest, CODE);
+    const result = await askDebug(debugRequest);
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/debug");
-    expect(url).not.toContain(CODE);
-    expect(init.headers).toMatchObject({ Authorization: `Bearer ${CODE}` });
     expect(JSON.parse(init.body as string)).toEqual(debugRequest);
     expect(JSON.parse(init.body as string).code).toBe(debugRequest.code);
     expect(result).toEqual(answer);
@@ -155,7 +153,7 @@ describe("askDebug", () => {
         { status: 400 },
       ),
     );
-    expect(await askDebug(debugRequest, CODE)).toEqual({
+    expect(await askDebug(debugRequest)).toEqual({
       status: "error",
       code: "invalid_request",
       message: "Fix it",
@@ -166,7 +164,7 @@ describe("askDebug", () => {
   it("rejects an answer that breaks the Debug contract", async () => {
     const broken = { ...answer, response: { ...answer.response, changes: [] } };
     mockFetch(async () => Response.json(broken));
-    expect(await askDebug(debugRequest, CODE)).toMatchObject({ status: "error", code: "malformed_output" });
+    expect(await askDebug(debugRequest)).toMatchObject({ status: "error", code: "malformed_output" });
   });
 
   it("rejects corrected code in a different language from the request", async () => {
@@ -175,13 +173,13 @@ describe("askDebug", () => {
       response: { ...answer.response, correctedCode: { language: "java", code: "class A {}" } },
     };
     mockFetch(async () => Response.json(wrong));
-    expect(await askDebug(debugRequest, CODE)).toMatchObject({ status: "error", code: "malformed_output" });
+    expect(await askDebug(debugRequest)).toMatchObject({ status: "error", code: "malformed_output" });
   });
 
   it("turns a network error into a typed failure", async () => {
     mockFetch(async () => {
       throw new TypeError("Failed to fetch");
     });
-    expect(await askDebug(debugRequest, CODE)).toMatchObject({ status: "error", code: "network" });
+    expect(await askDebug(debugRequest)).toMatchObject({ status: "error", code: "network" });
   });
 });

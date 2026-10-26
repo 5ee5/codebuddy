@@ -1,30 +1,14 @@
 import "server-only";
-import { createHash, timingSafeEqual } from "node:crypto";
 
 /*
- * Temporary safeguards for paid API use while CodeBuddy runs on a LAN dev
- * server: a shared access code and a small in-memory usage cap. This is not
- * authentication; it only stops casual or accidental use of the API credits.
+ * A small in-memory cap on paid API use, shared by every signed-in user. It
+ * limits the total spend even if one account is misused. It is kept per
+ * server process, so it resets when the server restarts.
  */
 
 export const HOURLY_REQUEST_LIMIT = 30;
 export const CONCURRENT_REQUEST_LIMIT = 2;
 const WINDOW_MS = 60 * 60 * 1000;
-
-function digest(value: string): Buffer {
-  return createHash("sha256").update(value, "utf8").digest();
-}
-
-/**
- * Compares the `Authorization: Bearer <code>` header with the expected code.
- * Hashing both sides first gives equal-length buffers, so the comparison is
- * constant-time regardless of the submitted length.
- */
-export function checkAccessCode(authorization: string | null, expected: string): boolean {
-  const match = authorization?.match(/^Bearer (.+)$/);
-  if (!match) return false;
-  return timingSafeEqual(digest(match[1].trim()), digest(expected));
-}
 
 // One fixed window per server process; it resets when the server restarts.
 let windowStart = 0;

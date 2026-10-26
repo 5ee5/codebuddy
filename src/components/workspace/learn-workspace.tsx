@@ -6,7 +6,6 @@ import { ResponsePanel } from "@/components/response-panel";
 import { Field } from "@/components/ui/field";
 import { RadioCards, type RadioCardOption } from "@/components/ui/radio-cards";
 import { buttonGhost, control, panel } from "@/components/ui/styles";
-import { AccessCodeField, useAccessCode } from "@/components/workspace/access-code-field";
 import { FormFooter } from "@/components/workspace/form-footer";
 import { askLearn } from "@/lib/assistant/client";
 import type { AssistantResult, LearnRequest, LearnerLevel } from "@/lib/assistant/types";
@@ -40,8 +39,6 @@ export function LearnWorkspace() {
   const panelRef = useRef<HTMLElement>(null);
   const inFlight = useRef<AbortController>(null);
 
-  const accessCode = useAccessCode("learn-access-code");
-
   const request: LearnRequest = {
     mode: "learn",
     question: question.trim(),
@@ -69,24 +66,16 @@ export function LearnWorkspace() {
       document.getElementById("learn-question")?.focus();
       return;
     }
-    const code = accessCode.take("Enter the access code to ask CodeBuddy.");
-    if (!code) return;
-
     const controller = new AbortController();
     inFlight.current = controller;
     setPending(true);
     setResult(null);
-    const outcome = await askLearn(request, code, controller.signal);
+    const outcome = await askLearn(request, controller.signal);
     // Cleared while waiting: drop the late result.
     if (controller.signal.aborted) return;
     inFlight.current = null;
     setPending(false);
 
-    if (outcome.status === "error" && outcome.code === "access_denied") {
-      accessCode.rejected(code, outcome.message);
-      return;
-    }
-    if (outcome.status === "answered") accessCode.accepted(code);
     setResult(outcome);
     if (outcome.status === "error" && outcome.fieldErrors?.question) {
       document.getElementById("learn-question")?.focus();
@@ -184,8 +173,6 @@ export function LearnWorkspace() {
             value={level}
             onChange={setLevel}
           />
-
-          <AccessCodeField {...accessCode.fieldProps} />
         </div>
 
         <FormFooter

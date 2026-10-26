@@ -7,7 +7,7 @@ import type { AssistantErrorCode, AssistantFailure, AssistantRequest } from "@/l
  */
 export const FAILURE_MESSAGES: Record<AssistantErrorCode, string> = {
   invalid_request: "Some details need fixing before CodeBuddy can answer.",
-  access_denied: "That access code wasn’t accepted. Check it and try again.",
+  access_denied: "You need to be signed in to use the AI tutor. Sign in, then try again.",
   not_configured: "The AI tutor isn’t set up on this server yet. Ask the person running CodeBuddy.",
   rate_limited: "CodeBuddy is getting a lot of questions right now. Wait a minute, then try again.",
   refused: "CodeBuddy can’t help with that question. Try asking about a programming topic.",

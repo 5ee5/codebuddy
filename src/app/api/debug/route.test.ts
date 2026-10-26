@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/debug/route";
 import { POST as learnPOST } from "@/app/api/learn/route";
-import { CONCURRENT_REQUEST_LIMIT, HOURLY_REQUEST_LIMIT, resetUsageForTests } from "@/lib/server/access";
+import { CONCURRENT_REQUEST_LIMIT, HOURLY_REQUEST_LIMIT, resetUsageForTests } from "@/lib/server/usage-cap";
 import { DEBUG_MAX_TOKENS, DEBUG_RESPONSE_SCHEMA, DEBUG_TIMEOUT_MS } from "@/lib/server/debug";
 
 /*
@@ -18,8 +18,15 @@ vi.mock("@/lib/server/anthropic", async (importOriginal) => ({
   createAnthropicClient,
 }));
 
+/*
+ * Sign-in is replaced with a fake too: by default the request comes from a
+ * signed-in user; a test can make it anonymous.
+ */
+const { getSignedInUser } = vi.hoisted(() => ({ getSignedInUser: vi.fn() }));
+vi.mock("@/lib/auth/server", () => ({ getSignedInUser }));
+const USER = { id: "00000000-0000-4000-8000-000000000001", email: "student@example.com" };
+
 const API_KEY = "sk-ant-test-key-never-real";
-const ACCESS_CODE = "test-access-code-0123456789";
 const MODEL = "claude-sonnet-5-5";
 const PROVIDER_SECRET = "internal provider detail xyz";
 
@@ -71,14 +78,13 @@ const validBody = { mode: "debug", language: "python", code: STUDENT_CODE, probl
 function makeRequest(
   url: string,
   body: unknown,
-  { headers = {}, code = ACCESS_CODE, raw }: { headers?: Record<string, string>; code?: string | null; raw?: string } = {},
+  { headers = {}, raw }: { headers?: Record<string, string>; raw?: string } = {},
 ): Request {
   return new Request(url, {
     method: "POST",
     headers: {
       host: "localhost:3001",
       "content-type": "application/json",
-      ...(code ? { authorization: `Bearer ${code}` } : {}),
       ...headers,
     },
     body: raw ?? JSON.stringify(body),
@@ -97,14 +103,16 @@ beforeEach(() => {
   createAnthropicClient.mockClear();
   vi.stubEnv("ANTHROPIC_API_KEY", API_KEY);
   vi.stubEnv("ANTHROPIC_MODEL", MODEL);
-  vi.stubEnv("CODEBUDDY_ACCESS_CODE", ACCESS_CODE);
+  vi.stubEnv("SUPABASE_URL", "https://project.supabase.co");
+  vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
+  getSignedInUser.mockReset().mockResolvedValue(USER);
   errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
   // Nothing sensitive or submitted may ever reach the server log.
   const logged = JSON.stringify(errorLog.mock.calls);
-  for (const secret of [API_KEY, ACCESS_CODE, PROVIDER_SECRET, "secret_marker_1", "secret_marker_2"]) {
+  for (const secret of [API_KEY, USER.email, PROVIDER_SECRET, "secret_marker_1", "secret_marker_2"]) {
     expect(logged).not.toContain(secret);
   }
 });
@@ -113,7 +121,7 @@ async function expectFailure(res: Response, status: number, code: string) {
   expect(res.status).toBe(status);
   expect(res.headers.get("cache-control")).toBe("no-store");
   const text = await res.text();
-  for (const secret of [API_KEY, ACCESS_CODE, PROVIDER_SECRET, "secret_marker_1", "secret_marker_2"]) {
+  for (const secret of [API_KEY, USER.email, PROVIDER_SECRET, "secret_marker_1", "secret_marker_2"]) {
     expect(text).not.toContain(secret);
   }
   const body = JSON.parse(text);
@@ -125,7 +133,7 @@ async function expectFailure(res: Response, status: number, code: string) {
 describe("POST /api/debug: rejected before any paid call", () => {
   afterEach(() => expect(create).not.toHaveBeenCalled());
 
-  it.each(["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "CODEBUDDY_ACCESS_CODE"])(
+  it.each(["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY"])(
     "returns 503 when %s is missing",
     async (name) => {
       vi.stubEnv(name, "");
@@ -133,12 +141,9 @@ describe("POST /api/debug: rejected before any paid call", () => {
     },
   );
 
-  it("returns 401 without an access code", async () => {
-    await expectFailure(await post(validBody, { code: null }), 401, "access_denied");
-  });
-
-  it("returns 401 for a wrong access code", async () => {
-    await expectFailure(await post(validBody, { code: "wrong-code-0123456789" }), 401, "access_denied");
+  it("returns 401 when nobody is signed in", async () => {
+    getSignedInUser.mockResolvedValue(null);
+    await expectFailure(await post(), 401, "access_denied");
   });
 
   it("returns 403 for a cross-site request", async () => {

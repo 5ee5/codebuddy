@@ -1,0 +1,27 @@
+import "server-only";
+import type { CookieOptionsWithName } from "@supabase/ssr";
+
+/*
+ * Supabase settings. Both are read on the server only: CodeBuddy signs users
+ * in through Server Actions and never talks to Supabase from the browser, so
+ * neither needs a `NEXT_PUBLIC_` prefix.
+ */
+export interface SupabaseConfig {
+  url: string;
+  publishableKey: string;
+}
+
+/** Returns `null` when anything is missing, so sign-in fails closed. */
+export function getSupabaseConfig(): SupabaseConfig | null {
+  const url = process.env.SUPABASE_URL?.trim();
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY?.trim();
+  if (!url || !publishableKey) return null;
+  return { url, publishableKey };
+}
+
+/**
+ * No browser code reads the session, so the cookies can be `httpOnly`: a
+ * script injected into the page can't steal them. Supabase's other defaults
+ * (`SameSite=Lax`, path `/`) stay.
+ */
+export const SESSION_COOKIE_OPTIONS: CookieOptionsWithName = { httpOnly: true };

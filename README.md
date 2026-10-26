@@ -77,9 +77,10 @@ CodeBuddy has three modes. **Learn and Debug are connected to Claude. Practice c
 
 ## Prerequisites
 
-- **Node.js 20.9 or newer.** That's the minimum for Next.js 16, and the Vitest version used supports Node 20, 22 and 24+. Node 20 has reached end-of-life, so a current LTS release (Node 22 or 24) is recommended.
+- **Node.js 22 or newer.** Next.js 16 itself runs on Node 20.9+, but Node 20 has reached end-of-life and `@supabase/supabase-js` warns that it will drop Node 20 support. Use a current LTS release (Node 22 or 24).
 - **npm.** The repository includes a `package-lock.json`.
 - **An Anthropic API key** from the [Claude Console](https://platform.claude.com), for the AI features. Requests to Claude are billed to your Anthropic account. Without a key, the app still runs, but Learn and Debug report that the tutor isn't set up.
+- **A Supabase project** from [supabase.com](https://supabase.com), for sign-in. The free plan is enough. Choose an EU region (for example Frankfurt) if your users are in the EU.
 
 ## Getting started
 
@@ -90,11 +91,19 @@ npm install
 cp .env.example .env.local
 ```
 
-Open `.env.local` and replace the placeholder values (see [Environment variables](#environment-variables)). To generate an access code:
+Open `.env.local` and replace the placeholder values (see [Environment variables](#environment-variables)).
 
-```bash
-openssl rand -base64 18
-```
+### Set up sign-in (Supabase)
+
+Learn and Debug are only for signed-in users. CodeBuddy is invite-only: there is no sign-up page, and you create each account yourself.
+
+1. In your Supabase project, open **Project Settings → API**. Copy the **Project URL** into `SUPABASE_URL` and the **publishable key** (called the `anon` key in older projects) into `SUPABASE_PUBLISHABLE_KEY`.
+2. Open **Authentication → Sign In / Providers**. Turn off **Allow new users to sign up**, and leave the **Email** provider on.
+3. Open **Authentication → Users → Add user → Create new user**. Enter the learner's email and a starting password, tick **Auto Confirm User**, and give them the password. They can change it on the **Account** page after signing in.
+
+Because accounts are created already confirmed, CodeBuddy doesn't need to send any email.
+
+### Run it
 
 Start the development server:
 
@@ -108,22 +117,24 @@ Then open [http://localhost:3000](http://localhost:3000). If port 3000 is in use
 
 ## Environment variables
 
-All three variables are **server-only and required** for Learn and Debug. Never prefix them with `NEXT_PUBLIC_`, because that would expose them to the browser.
+All four variables are **server-only and required** for Learn and Debug. Never prefix them with `NEXT_PUBLIC_`, because that would expose them to the browser. (The Supabase key is designed to be public, but CodeBuddy never needs it in the browser, so it stays on the server too.)
 
 | Variable | Required | What it does |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Yes | Your Anthropic API key. It's used only on the server to call Claude. |
 | `ANTHROPIC_MODEL` | Yes | The Claude model ID used by Learn and Debug. There is no built-in default. `.env.example` suggests `claude-sonnet-5-5`; see Anthropic's [models overview](https://platform.claude.com/docs/en/about-claude/models/overview) for current IDs. |
-| `CODEBUDDY_ACCESS_CODE` | Yes | A shared code that users must enter before Learn or Debug can call the paid API. It must be at least 16 characters, or the AI features stay disabled. |
+| `SUPABASE_URL` | Yes | Your Supabase project URL, for example `https://abcdefgh.supabase.co`. |
+| `SUPABASE_PUBLISHABLE_KEY` | Yes | Your Supabase project's publishable (`anon`) key. Never use the secret `service_role` key here. |
 
 ```bash
 # .env.local (placeholders only)
 ANTHROPIC_API_KEY=your-anthropic-api-key
 ANTHROPIC_MODEL=claude-sonnet-5-5
-CODEBUDDY_ACCESS_CODE=replace-with-a-long-random-code
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 ```
 
-If any variable is missing, or the access code is too short, the pages still load. Learn and Debug then answer with a "not set up" message instead of calling Claude.
+If any variable is missing, the pages still load. Learn and Debug then answer with a "not set up" message instead of calling Claude, and signing in says it isn't set up.
 
 ## Available routes
 
@@ -135,6 +146,10 @@ If any variable is missing, or the access code is too short, the pages still loa
 | `/learn` | Learn mode (AI-powered) |
 | `/debug` | Debug mode (AI-powered) |
 | `/practice` | Practice mode (answers checked locally, not connected to the AI) |
+| `/login` | Sign in with email and password |
+| `/account` | Shows who is signed in; change password and sign out |
+
+`/learn`, `/debug` and `/account` need a signed-in user. Visitors who aren't signed in are sent to `/login` and brought back afterwards. Home and Practice are open to everyone.
 
 Unknown paths show a custom "page not found" page.
 
@@ -148,9 +163,7 @@ Unknown paths show a custom "page not found" page.
 Both endpoints:
 - accept JSON only;
 - accept requests from the app's own pages only, not from other websites;
-- require the access code as `Authorization: Bearer <access code>`.
-
-The web interface handles all of this for you. Learners type the access code into the form once, and it's remembered for that browser tab only (`sessionStorage`).
+- require a signed-in user. The session is a cookie that the browser sends automatically, and the server verifies it with Supabase.
 
 Responses are JSON, either an answer or an error with a short, user-friendly message. If something fails, the error message never includes provider details, stack traces or secrets. There is no API endpoint for Practice.
 
@@ -181,13 +194,17 @@ src/
 │   ├── api/learn/        POST /api/learn
 │   ├── api/debug/        POST /api/debug
 │   ├── learn/ debug/ practice/   Mode pages
+│   ├── login/ account/   Sign-in and account pages
 │   └── page.tsx, layout.tsx, not-found.tsx, globals.css
+├── proxy.ts              Refreshes the sign-in session; sends signed-out visitors to /login
 ├── components/           UI: app shell, navigation, mode workspaces, answer views
+│   ├── auth/             Sign-in and password forms, the user menu
 │   ├── workspace/        Learn, Debug and Practice forms (client components)
 │   └── ui/               Reusable pieces: code editor, code block, copy button, fields
 ├── lib/
 │   ├── assistant/        Shared request/response types, validation and the browser client
-│   ├── server/           Server-only code: configuration, access checks, Claude calls, prompts
+│   ├── auth/             Supabase sign-in: session helpers, Server Actions, protected paths
+│   ├── server/           Server-only code: configuration, request checks, usage cap, Claude calls, prompts
 │   ├── practice/         Practice answer checker: reads code as text, never runs it
 │   ├── modes.ts          The three modes (labels, descriptions, sections)
 │   ├── exercises.ts      Practice exercises
@@ -200,12 +217,13 @@ src/
   1. that the request comes from the app itself;
   2. the request type and size;
   3. that the server configuration is complete;
-  4. the access code;
+  4. that a user is signed in;
   5. the request fields;
   6. a shared usage cap.
 
   Only then does it call Claude. The model's reply must match a strict JSON format, and anything that doesn't match is rejected instead of shown.
-- **Server-only boundary:** the API key, model and access code are read only in `src/lib/server/`, whose modules are marked `server-only`. They never reach the browser bundle.
+- **Sign-in:** pages use Server Actions to sign in, sign out and change passwords, so the browser never talks to Supabase directly. `src/proxy.ts` refreshes the session on each request and redirects signed-out visitors away from protected pages. That's only for navigation: the API routes check the user again before any paid call.
+- **Server-only boundary:** the Anthropic and Supabase settings are read only in `src/lib/server/` and `src/lib/auth/`, whose modules are marked `server-only`. They never reach the browser bundle.
 
 ## Security and limitations
 
@@ -213,27 +231,28 @@ src/
 - **Code is never executed.** CodeBuddy sends Debug code to Claude for analysis only, and Practice answers are checked by reading them in the browser. Nothing is run or compiled, and the app says so in Debug answers and Practice results.
 - **Submitted text goes to Anthropic.** Learn questions and Debug code and descriptions are sent to the Anthropic API for processing. Don't paste secrets or private data into the forms.
 - **API key:** it's kept on the server and is never sent to the browser, logged or returned in responses.
-- **Access code:** this is a single shared code, not a user account system.
-  - Anyone who knows it can use the AI features.
-  - Over plain HTTP, for example on a local network, it can be read from network traffic. Use the app only on networks you trust, or serve it over HTTPS.
-- **Usage cap:** the server allows a limited number of AI requests per hour and at the same time, shared by all users.
+- **Accounts:** sign-in uses Supabase Auth with email and password, and only accounts you create can sign in.
+  - The session cookie is `httpOnly` and `SameSite=Lax`, so page scripts can't read it and other websites can't use it to send requests. The API routes also reject requests from other origins.
+  - Over plain HTTP, for example on a local network, passwords and session cookies can be read from network traffic. Serve the app over HTTPS.
+- **Usage cap:** the server allows a limited number of AI requests per hour and at the same time, shared by all users. There are no per-user limits yet.
   - The cap is kept in memory, so it resets when the server restarts and isn't shared between multiple server instances.
   - Requests are never retried automatically, to avoid unexpected charges.
-- **Not production-ready.** There are no user accounts, no per-user limits and no persistent storage, and the app hasn't been prepared or reviewed for public deployment.
+- **Not production-ready.** There are no per-user limits and no saved history yet, and the app hasn't been reviewed for public deployment.
 
 ## Project status and future work
 
 **Current state:**
 - Learn and Debug are fully working with Claude.
 - Practice offers exercises, hints and an editor, and checks answers locally with requirement checks and test cases. It gives no AI feedback.
-- Nothing is stored between sessions.
+- Learn and Debug need a signed-in user. Accounts are invite-only and created in Supabase.
+- Nothing else is stored between sessions.
 
 **Known limitations and possible improvements** (planned or under consideration, not implemented):
 - Full verification for every Practice solution. This would need a real sandbox, such as Pyodide or a JavaScript interpreter in an isolated worker or iframe with time limits and no network access, or an isolated server-side runner.
 - AI feedback for Practice solutions. The response format is already defined in the code, but nothing produces it yet.
-- User accounts and saved learning history. The app mentions these as later milestones.
+- Saved learning history and Practice progress for signed-in users.
 - Streaming AI answers, so long Debug answers appear progressively instead of after a wait.
-- Per-user rate limiting and a sturdier access mechanism before any public deployment.
+- Per-user rate limiting before any public deployment.
 
 ## License
 

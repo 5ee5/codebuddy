@@ -21,18 +21,12 @@ describe("getServerConfig", () => {
   it("returns trimmed settings when all are present", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", " key ");
     vi.stubEnv("ANTHROPIC_MODEL", "claude-sonnet-5-5");
-    vi.stubEnv("CODEBUDDY_ACCESS_CODE", "0123456789abcdef");
-    expect(getServerConfig()).toEqual({
-      apiKey: "key",
-      model: "claude-sonnet-5-5",
-      accessCode: "0123456789abcdef",
-    });
+    expect(getServerConfig()).toEqual({ apiKey: "key", model: "claude-sonnet-5-5" });
   });
 
-  it("fails closed when the access code is shorter than 16 characters", () => {
+  it("fails closed when the model is missing", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "key");
-    vi.stubEnv("ANTHROPIC_MODEL", "claude-sonnet-5-5");
-    vi.stubEnv("CODEBUDDY_ACCESS_CODE", "0123456789abcde");
+    vi.stubEnv("ANTHROPIC_MODEL", " ");
     expect(getServerConfig()).toBeNull();
   });
 });

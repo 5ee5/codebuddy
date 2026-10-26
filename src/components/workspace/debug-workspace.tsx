@@ -6,7 +6,6 @@ import { ResponsePanel } from "@/components/response-panel";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Field, Select } from "@/components/ui/field";
 import { buttonGhost, buttonSecondary, panel } from "@/components/ui/styles";
-import { AccessCodeField, useAccessCode } from "@/components/workspace/access-code-field";
 import { FormFooter } from "@/components/workspace/form-footer";
 import { askDebug } from "@/lib/assistant/client";
 import type { DebugRequest, FieldErrors, ProgrammingLanguage } from "@/lib/assistant/types";
@@ -56,7 +55,6 @@ export function DebugWorkspace() {
   const [problem, setProblem] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
-  const accessCode = useAccessCode("debug-access-code");
 
   // Request lifecycle (see lib/debug-session). The ref always holds the latest
   // state, so a double click in the same frame can't send twice.
@@ -87,22 +85,15 @@ export function DebugWorkspace() {
   const problemError =
     errors.problem ?? (sent?.problem === request.problem ? serverErrors?.problem : undefined);
 
-  async function send(next: DebugSession, accessKey: string) {
+  async function send(next: DebugSession) {
     if (!next.request) return;
     const controller = new AbortController();
     inFlight.current = controller;
-    const result = await askDebug(next.request, accessKey, controller.signal);
+    const result = await askDebug(next.request, controller.signal);
     // Cleared while waiting: drop the late result.
     if (controller.signal.aborted) return;
     inFlight.current = null;
 
-    if (result.status === "error" && result.code === "access_denied") {
-      apply({ type: "settled", attempt: next.attempt, result });
-      apply({ type: "reset" });
-      accessCode.rejected(accessKey, result.message);
-      return;
-    }
-    if (result.status === "answered") accessCode.accepted(accessKey);
     if (!apply({ type: "settled", attempt: next.attempt, result })) return;
     if (!(result.status === "error" && result.fieldErrors && focusFirstInvalid(result.fieldErrors))) {
       panelRef.current?.focus();
@@ -114,17 +105,13 @@ export function DebugWorkspace() {
     if (sessionRef.current.phase === "pending") return;
     setSubmitted(true);
     if (focusFirstInvalid(validateDebug(request))) return;
-    const key = accessCode.take("Enter the access code to debug with CodeBuddy.");
-    if (!key) return;
     const next = apply({ type: "submit", request });
-    if (next) void send(next, key);
+    if (next) void send(next);
   }
 
   function handleRetry() {
-    const key = accessCode.take("Enter the access code to debug with CodeBuddy.");
-    if (!key) return;
     const next = apply({ type: "retry" });
-    if (next) void send(next, key);
+    if (next) void send(next);
   }
 
   /** Clear and "Start a new debug session": empty form, no answer, same language. */
@@ -213,8 +200,6 @@ export function DebugWorkspace() {
               />
             )}
           </Field>
-
-          <AccessCodeField {...accessCode.fieldProps} />
         </div>
 
         <FormFooter
