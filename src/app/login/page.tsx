@@ -15,8 +15,11 @@ export default function LoginPage() {
         <p className={eyebrow}>Account</p>
         <h1 className="font-display mt-3 text-4xl font-semibold sm:text-5xl">Sign in</h1>
         <p className="mt-3 text-base leading-relaxed text-muted">
-          Learn and Debug use a paid AI service, so they need an account. Ask the person running
-          CodeBuddy to create one for you.{" "}
+          Learn and Debug use a paid AI service, so they need an account.{" "}
+          <Link href="/signup" className="font-semibold text-ink underline underline-offset-4">
+            Create one
+          </Link>{" "}
+          with the class code from your teacher.{" "}
           <Link href="/practice" className="font-semibold text-ink underline underline-offset-4">
             Practice
           </Link>{" "}

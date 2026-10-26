@@ -30,6 +30,19 @@ export function getSupabaseSecretKey(): string | null {
   return key;
 }
 
+/** Shorter codes are treated as "sign-up closed", so a guessable code never works. */
+export const SIGNUP_CODE_MIN_LENGTH = 8;
+
+/**
+ * The class code students need to create an account, or `null` when sign-up
+ * is closed (not set, or too short).
+ */
+export function getSignupCode(): string | null {
+  const code = process.env.CODEBUDDY_SIGNUP_CODE?.trim();
+  if (!code || code.length < SIGNUP_CODE_MIN_LENGTH) return null;
+  return code;
+}
+
 /**
  * No browser code reads the session, so the cookies can be `httpOnly`: a
  * script injected into the page can't steal them. Supabase's other defaults

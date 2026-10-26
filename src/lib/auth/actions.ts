@@ -1,24 +1,31 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { canDeleteAccounts, deleteUserById, verifyPassword } from "@/lib/auth/admin";
-import { getSupabaseConfig } from "@/lib/auth/config";
+import { canManageAccounts, createConfirmedUser, deleteUserById, verifyPassword } from "@/lib/auth/admin";
+import { getSignupCode, getSupabaseConfig } from "@/lib/auth/config";
 import { loginPathFor, safeNextPath } from "@/lib/auth/paths";
 import { createSupabaseClient, getSignedInUser } from "@/lib/auth/server";
+import {
+  checkSignupCode,
+  newAccountLimitReached,
+  recordFailedCode,
+  recordNewAccount,
+  tooManyFailedCodes,
+} from "@/lib/auth/signup";
 import {
   hasFieldErrors,
   validateAccountDeletion,
   validateNewPassword,
   validateSignIn,
+  validateSignUp,
   type AuthFormState,
 } from "@/lib/auth/validation";
 
 /*
- * Sign-in, sign-out and password changes. Accounts are created by the person
- * running CodeBuddy in the Supabase dashboard, so there is no sign-up here.
- * Supabase's own error text never reaches the page; only its error code is
- * logged.
+ * Sign-up with a class code, sign-in, sign-out, password changes and account
+ * deletion. Supabase's own error text never reaches the page; only its error
+ * code is logged.
  */
 
 const NOT_CONFIGURED = "Sign-in isn’t set up on this server yet. Ask the person running CodeBuddy.";
@@ -51,6 +58,70 @@ export async function signIn(_previous: AuthFormState, formData: FormData): Prom
     return { message: UNAVAILABLE, email };
   }
   redirect(safeNextPath(formData.get("next")));
+}
+
+/**
+ * The visitor's network address, for the wrong-code limit. On the live site
+ * every request comes through Cloudflare, which sets `CF-Connecting-IP`.
+ */
+async function clientAddress(): Promise<string> {
+  const h = await headers();
+  return h.get("cf-connecting-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+}
+
+const SIGNUP_CLOSED = "Sign-up isn’t open on this server. Ask the person running CodeBuddy for an account.";
+
+/**
+ * Creates an account for someone with the class code, then signs them in.
+ * Public sign-up stays off in Supabase; the account is created here with the
+ * secret key, so the class code can't be skipped.
+ */
+export async function signUp(_previous: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  const classCode = String(formData.get("classCode") ?? "").trim();
+  const fieldErrors = validateSignUp(email, password, confirm, classCode);
+  if (hasFieldErrors(fieldErrors)) return { fieldErrors, email };
+
+  const expected = getSignupCode();
+  const config = getSupabaseConfig();
+  if (!expected || !config || !canManageAccounts()) return { message: SIGNUP_CLOSED, email };
+
+  const address = await clientAddress();
+  if (tooManyFailedCodes(address)) {
+    return { message: "Too many wrong class codes from your network. Wait an hour, then try again.", email };
+  }
+  if (!checkSignupCode(classCode, expected)) {
+    recordFailedCode(address);
+    return { fieldErrors: { classCode: "That class code isn’t right. Check it with your teacher." }, email };
+  }
+  if (newAccountLimitReached()) {
+    return { message: "A lot of accounts were created in the last hour. Try again later.", email };
+  }
+
+  switch (await createConfirmedUser(email, password)) {
+    case "exists":
+      return { fieldErrors: { email: "There’s already an account with this email. Sign in instead." }, email };
+    case "weak_password":
+      return {
+        fieldErrors: { password: "That password is too easy to guess. Choose a longer or less common one." },
+        email,
+      };
+    case "unavailable":
+      return { message: "Your account couldn’t be created right now. Try again in a little while.", email };
+  }
+  recordNewAccount();
+
+  const next = safeNextPath(formData.get("next"));
+  const supabase = await createSupabaseClient(config);
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) {
+    // The account exists; the student can sign in by hand.
+    logAuthFailure("sign-in-after-sign-up", error.code ?? error.status);
+    redirect(loginPathFor(next));
+  }
+  redirect(next);
 }
 
 export async function signOut(): Promise<void> {
@@ -107,7 +178,7 @@ export async function deleteAccount(_previous: AuthFormState, formData: FormData
 
   const user = await getSignedInUser();
   if (!user) redirect(loginPathFor("/account"));
-  if (!canDeleteAccounts()) {
+  if (!canManageAccounts()) {
     return { message: "Deleting accounts isn’t set up on this server yet. Ask the person running CodeBuddy." };
   }
   if (!user.email) return { message: DELETE_UNAVAILABLE };

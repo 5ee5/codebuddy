@@ -9,7 +9,9 @@ export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 72;
 const EMAIL_MAX_LENGTH = 254;
 
-export type AuthFieldErrors = Partial<Record<"email" | "password" | "confirm" | "understood", string>>;
+export type AuthFieldErrors = Partial<
+  Record<"email" | "password" | "confirm" | "understood" | "classCode", string>
+>;
 
 /** What a sign-in or password Server Action reports back to its form. */
 export interface AuthFormState {
@@ -39,6 +41,15 @@ export function validateNewPassword(password: string, confirm: string): AuthFiel
     errors.password = `Use at most ${PASSWORD_MAX_LENGTH} characters.`;
   }
   if (!errors.password && confirm !== password) errors.confirm = "The two passwords don’t match.";
+  return errors;
+}
+
+export function validateSignUp(email: string, password: string, confirm: string, classCode: string): AuthFieldErrors {
+  const errors: AuthFieldErrors = {};
+  const emailError = validateSignIn(email, "-").email;
+  if (emailError) errors.email = emailError;
+  Object.assign(errors, validateNewPassword(password, confirm));
+  if (!classCode) errors.classCode = "Enter the class code from your teacher.";
   return errors;
 }
 

@@ -3,8 +3,9 @@ import { createClient } from "@supabase/supabase-js";
 import { getSupabaseConfig, getSupabaseSecretKey } from "@/lib/auth/config";
 
 /*
- * The only code that uses Supabase's secret key: deleting an account. Each
- * call gets a fresh client that never stores a session or sets cookies.
+ * The only code that uses Supabase's secret key: creating an account with a
+ * class code, and deleting an account. Each call gets a fresh client that
+ * never stores a session or sets cookies.
  */
 
 const STATELESS = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } };
@@ -30,9 +31,29 @@ export async function verifyPassword(email: string, password: string): Promise<P
   return "ok";
 }
 
-/** Whether this server can delete accounts at all. */
-export function canDeleteAccounts(): boolean {
+/** Whether this server can create and delete accounts at all. */
+export function canManageAccounts(): boolean {
   return Boolean(getSupabaseConfig() && getSupabaseSecretKey());
+}
+
+export type CreateUserResult = "ok" | "exists" | "weak_password" | "unavailable";
+
+/**
+ * Creates an account that is already confirmed, so no email is sent. This
+ * works while public sign-up is switched off in Supabase, which keeps the
+ * class code the only way in.
+ */
+export async function createConfirmedUser(email: string, password: string): Promise<CreateUserResult> {
+  const config = getSupabaseConfig();
+  const secretKey = getSupabaseSecretKey();
+  if (!config || !secretKey) return "unavailable";
+  const admin = createClient(config.url, secretKey, STATELESS);
+  const { error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  if (!error) return "ok";
+  if (error.code === "email_exists" || error.code === "user_already_exists") return "exists";
+  if (error.code === "weak_password") return "weak_password";
+  console.error("[auth]", "create-user", error.code ?? error.status ?? "-");
+  return "unavailable";
 }
 
 /**

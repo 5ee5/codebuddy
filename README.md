@@ -100,13 +100,14 @@ Open `.env.local` and replace the placeholder values (see [Environment variables
 
 ### Set up sign-in (Supabase)
 
-Learn and Debug are only for signed-in users. CodeBuddy is invite-only: there is no sign-up page, and you create each account yourself.
+Learn and Debug are only for signed-in users. Students create their own account at `/signup` with a **class code** you give them, or you create accounts yourself in Supabase.
 
 1. In your Supabase project, open **Project Settings → API**. Copy the **Project URL** into `SUPABASE_URL` and the **publishable key** (called the `anon` key in older projects) into `SUPABASE_PUBLISHABLE_KEY`.
 2. Open **Authentication → Sign In / Providers**. Turn off **Allow new users to sign up**, and leave the **Email** provider on.
-3. Open **Authentication → Users → Add user → Create new user**. Enter the learner's email and a starting password, tick **Auto Confirm User**, and give them the password. They can change it on the **Account** page after signing in.
+3. To let students sign up themselves, copy the **secret key** (**Project Settings → API Keys**) into `SUPABASE_SECRET_KEY`, and choose a class code of at least 8 characters for `CODEBUDDY_SIGNUP_CODE`. Share the code with your class. To change it, edit `.env.local` and restart the server.
+4. To create an account yourself instead, open **Authentication → Users → Add user → Create new user**. Enter the learner's email and a starting password, tick **Auto Confirm User**, and give them the password. They can change it on the **Account** page after signing in.
 
-Because accounts are created already confirmed, CodeBuddy doesn't need to send any email.
+Keep public sign-up switched off in Supabase (step 2). CodeBuddy creates sign-up accounts itself with the secret key, and only when the class code is right, so the code can't be skipped by calling Supabase directly. Accounts are created already confirmed, so CodeBuddy doesn't need to send any email.
 
 ### Create the database tables
 
@@ -134,7 +135,7 @@ Then open [http://localhost:3000](http://localhost:3000). If port 3000 is in use
 
 ## Environment variables
 
-The first four variables are **server-only and required** for Learn and Debug; the fifth is optional. Never prefix them with `NEXT_PUBLIC_`, because that would expose them to the browser. (The Supabase key is designed to be public, but CodeBuddy never needs it in the browser, so it stays on the server too.)
+The first four variables are **server-only and required** for Learn and Debug; the others are optional. Never prefix them with `NEXT_PUBLIC_`, because that would expose them to the browser. (The Supabase key is designed to be public, but CodeBuddy never needs it in the browser, so it stays on the server too.)
 
 | Variable | Required | What it does |
 |---|---|---|
@@ -142,7 +143,8 @@ The first four variables are **server-only and required** for Learn and Debug; t
 | `ANTHROPIC_MODEL` | Yes | The Claude model ID used by Learn and Debug. There is no built-in default. `.env.example` suggests `claude-sonnet-5-5`; see Anthropic's [models overview](https://platform.claude.com/docs/en/about-claude/models/overview) for current IDs. |
 | `SUPABASE_URL` | Yes | Your Supabase project URL, for example `https://abcdefgh.supabase.co`. |
 | `SUPABASE_PUBLISHABLE_KEY` | Yes | Your Supabase project's publishable (`anon`) key. Never use the secret `service_role` key here. |
-| `SUPABASE_SECRET_KEY` | No | Your Supabase project's **secret** key (`sb_secret_…`, or the legacy `service_role` key). It's used only to let students delete their own account. Without it, the Account page says deletion isn't set up. It bypasses every access rule, so keep it in `.env.local` only. |
+| `CODEBUDDY_SIGNUP_CODE` | No | The class code students enter at `/signup`, at least 8 characters. Without it (or with `SUPABASE_SECRET_KEY` missing), sign-up is closed. |
+| `SUPABASE_SECRET_KEY` | No | Your Supabase project's **secret** key (`sb_secret_…`, or the legacy `service_role` key). It's used only to create accounts at sign-up and to let students delete their own account. Without it, both say they aren't set up. It bypasses every access rule, so keep it in `.env.local` only. |
 
 ```bash
 # .env.local (placeholders only)
@@ -150,7 +152,8 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 ANTHROPIC_MODEL=claude-sonnet-5-5
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
-SUPABASE_SECRET_KEY=your-supabase-secret-key   # optional, for account deletion
+SUPABASE_SECRET_KEY=your-supabase-secret-key   # optional, for sign-up and account deletion
+CODEBUDDY_SIGNUP_CODE=your-class-code           # optional, opens /signup
 ```
 
 If any variable is missing, the pages still load. Learn and Debug then answer with a "not set up" message instead of calling Claude, and signing in says it isn't set up.
@@ -166,6 +169,7 @@ If any variable is missing, the pages still load. Learn and Debug then answer wi
 | `/debug` | Debug mode (AI-powered) |
 | `/practice` | Practice mode (answers checked locally, not connected to the AI) |
 | `/login` | Sign in with email and password |
+| `/signup` | Create an account with the class code |
 | `/account` | Shows who is signed in; change password, sign out, delete the account |
 | `/history` | Your saved Learn and Debug answers from the last 90 days |
 | `/history/<id>` | One saved answer |
@@ -262,14 +266,16 @@ supabase/
 - **Code is never executed.** CodeBuddy sends Debug code to Claude for analysis only, and Practice answers are checked by reading them in the browser. Nothing is run or compiled, and the app says so in Debug answers and Practice results.
 - **Submitted text goes to Anthropic.** Learn questions and Debug code and descriptions are sent to the Anthropic API for processing. Don't paste secrets or private data into the forms.
 - **API key:** it's kept on the server and is never sent to the browser, logged or returned in responses.
-- **Accounts:** sign-in uses Supabase Auth with email and password, and only accounts you create can sign in.
+- **Accounts:** sign-in uses Supabase Auth with email and password. Accounts come from sign-up with the class code, or are created by you in Supabase.
+  - Sign-up allows about 10 wrong class codes per network address per hour, and 60 new accounts per hour in total. Both limits are kept in memory and reset when the server restarts.
+  - Email addresses aren't verified, so a student who mistypes theirs can still sign in with it, but nothing is ever sent to it.
   - The session cookie is `httpOnly` and `SameSite=Lax`, so page scripts can't read it and other websites can't use it to send requests. The API routes also reject requests from other origins.
   - Over plain HTTP, for example on a local network, passwords and session cookies can be read from network traffic. Serve the app over HTTPS.
 - **Usage cap:** each student can ask 20 questions in any 24 hours (enforced in the database). On top of that, the server allows a limited number of AI requests per hour and at the same time, shared by all users.
   - The cap is kept in memory, so it resets when the server restarts and isn't shared between multiple server instances.
   - Requests are never retried automatically, to avoid unexpected charges.
 - **Stored data:** Learn questions, Debug code and descriptions, and the answers are stored in Supabase for 90 days. Practice drafts and progress are kept until the account is deleted. The `/privacy` page explains this to students; keep it in step with the code.
-- **Account deletion:** students can delete their own account on the Account page after entering their password again. It removes the account, history and Practice progress at once. This is the only place the Supabase secret key is used (`src/lib/auth/admin.ts`).
+- **Account deletion:** students can delete their own account on the Account page after entering their password again. It removes the account, history and Practice progress at once. The Supabase secret key is used only in `src/lib/auth/admin.ts`, for this and for sign-up.
 - **Not production-ready.** The app hasn't been reviewed for public deployment.
 
 ## Project status and future work
@@ -277,7 +283,7 @@ supabase/
 **Current state:**
 - Learn and Debug are fully working with Claude.
 - Practice offers exercises, hints and an editor, and checks answers locally with requirement checks and test cases. It gives no AI feedback.
-- Learn and Debug need a signed-in user. Accounts are invite-only and created in Supabase.
+- Learn and Debug need a signed-in user. Students sign up with a class code, or you create accounts in Supabase.
 - Signed-in students get a 90-day history of Learn and Debug answers, a daily allowance of 20 questions, and saved Practice progress.
 
 **Known limitations and possible improvements** (planned or under consideration, not implemented):

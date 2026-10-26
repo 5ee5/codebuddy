@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * dependency faked: Supabase, cookies and Next's redirect.
  */
 const mocks = vi.hoisted(() => ({
-  canDeleteAccounts: vi.fn(),
+  canManageAccounts: vi.fn(),
   verifyPassword: vi.fn(),
   deleteUserById: vi.fn(),
   getSignedInUser: vi.fn(),
@@ -25,7 +25,7 @@ vi.mock("next/headers", () => ({
   }),
 }));
 vi.mock("@/lib/auth/admin", () => ({
-  canDeleteAccounts: mocks.canDeleteAccounts,
+  canManageAccounts: mocks.canManageAccounts,
   verifyPassword: mocks.verifyPassword,
   deleteUserById: mocks.deleteUserById,
 }));
@@ -51,7 +51,7 @@ const valid = () => form({ password: "correct horse", understood: "on" });
 beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.getSignedInUser.mockResolvedValue(USER);
-  mocks.canDeleteAccounts.mockReturnValue(true);
+  mocks.canManageAccounts.mockReturnValue(true);
   mocks.verifyPassword.mockResolvedValue("ok");
   mocks.deleteUserById.mockResolvedValue(true);
   mocks.signOut.mockResolvedValue({ error: null });
@@ -80,7 +80,7 @@ describe("deleteAccount", () => {
   });
 
   it("explains when the server can't delete accounts", async () => {
-    mocks.canDeleteAccounts.mockReturnValue(false);
+    mocks.canManageAccounts.mockReturnValue(false);
     const state = await deleteAccount({}, valid());
     expect(state.message).toMatch(/isn’t set up/);
     expect(mocks.verifyPassword).not.toHaveBeenCalled();

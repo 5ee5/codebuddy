@@ -7,6 +7,7 @@
 export const PROTECTED_PATHS = ["/learn", "/debug", "/account", "/history"] as const;
 
 export const LOGIN_PATH = "/login";
+export const SIGNUP_PATH = "/signup";
 
 export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));

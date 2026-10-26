@@ -6,6 +6,7 @@ import {
   validateAccountDeletion,
   validateNewPassword,
   validateSignIn,
+  validateSignUp,
 } from "@/lib/auth/validation";
 
 describe("validateSignIn", () => {
@@ -51,5 +52,19 @@ describe("validateAccountDeletion", () => {
     expect(hasFieldErrors(validateAccountDeletion("secret", true))).toBe(false);
     expect(Object.keys(validateAccountDeletion("", true))).toEqual(["password"]);
     expect(Object.keys(validateAccountDeletion("secret", false))).toEqual(["understood"]);
+  });
+});
+
+describe("validateSignUp", () => {
+  it("accepts a complete form", () => {
+    expect(hasFieldErrors(validateSignUp("ada@example.com", "a long password", "a long password", "code"))).toBe(false);
+  });
+
+  it("reports each problem on its own field", () => {
+    expect(validateSignUp("", "a long password", "different", "")).toEqual({
+      email: "Enter your email address.",
+      confirm: "The two passwords don’t match.",
+      classCode: "Enter the class code from your teacher.",
+    });
   });
 });

@@ -2,7 +2,7 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig, SESSION_COOKIE_OPTIONS } from "@/lib/auth/config";
-import { isProtectedPath, LOGIN_PATH, loginPathFor } from "@/lib/auth/paths";
+import { isProtectedPath, LOGIN_PATH, loginPathFor, SIGNUP_PATH } from "@/lib/auth/paths";
 
 /*
  * Runs before every page and API request (see `src/proxy.ts`). It refreshes
@@ -39,7 +39,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   if (!signedIn && isProtectedPath(pathname)) {
     return redirectKeepingCookies(request, response, loginPathFor(`${pathname}${search}`));
   }
-  if (signedIn && pathname === LOGIN_PATH) {
+  if (signedIn && (pathname === LOGIN_PATH || pathname === SIGNUP_PATH)) {
     return redirectKeepingCookies(request, response, "/");
   }
   return response;
