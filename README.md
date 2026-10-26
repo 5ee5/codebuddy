@@ -107,6 +107,14 @@ Learn and Debug are only for signed-in users. Students create their own account 
 3. To let students sign up themselves, copy the **secret key** (**Project Settings → API Keys**) into `SUPABASE_SECRET_KEY`, and choose a class code of at least 8 characters for `CODEBUDDY_SIGNUP_CODE`. Share the code with your class. To change it, edit `.env.local` and restart the server.
 4. To create an account yourself instead, open **Authentication → Users → Add user → Create new user**. Enter the learner's email and a starting password, tick **Auto Confirm User**, and give them the password. They can change it on the **Account** page after signing in.
 
+5. Optional, **Sign in with GitHub**. Students who connect GitHub on their Account page can then sign in with it. New students still need the class code first. To switch it on:
+   1. On GitHub, go to **Settings → Developer settings → OAuth Apps → New OAuth App**. Use your site's address as the homepage URL, and `https://<your-project-ref>.supabase.co/auth/v1/callback` as the callback URL. Create a client secret.
+   2. In Supabase, open **Authentication → Sign In / Providers → GitHub**, switch it on and paste the Client ID and secret.
+   3. In the same place, turn on **Allow manual linking**, so students can connect GitHub to their existing account.
+   4. Open **Authentication → URL Configuration** and add `https://<your-site>/**` (and `http://localhost:3000/**` for development) to **Redirect URLs**. The `**` matters: CodeBuddy's return address includes `?next=…`, and without the wildcard Supabase rejects it and sends people to the Site URL instead. Supabase ignores entries with a plain IP address (such as `http://192.168.1.10:3000/**`), so test GitHub sign-in through `localhost` or your real domain, not a LAN address.
+
+   The GitHub buttons appear by themselves once the provider is on (CodeBuddy checks every few minutes).
+
 Keep public sign-up switched off in Supabase (step 2). CodeBuddy creates sign-up accounts itself with the secret key, and only when the class code is right, so the code can't be skipped by calling Supabase directly. Accounts are created already confirmed, so CodeBuddy doesn't need to send any email.
 
 ### Create the database tables
@@ -170,7 +178,8 @@ If any variable is missing, the pages still load. Learn and Debug then answer wi
 | `/practice` | Practice mode (answers checked locally, not connected to the AI) |
 | `/login` | Sign in with email and password |
 | `/signup` | Create an account with the class code |
-| `/account` | Shows who is signed in; change password, sign out, delete the account |
+| `/auth/callback` | Where GitHub sign-in and "Connect GitHub" return to |
+| `/account` | Shows who is signed in; connect GitHub, change password, sign out, delete the account |
 | `/history` | Your saved Learn and Debug answers from the last 90 days |
 | `/history/<id>` | One saved answer |
 | `/privacy` | What is stored, who processes it, for how long, and how to delete it |
@@ -269,6 +278,7 @@ supabase/
 - **Accounts:** sign-in uses Supabase Auth with email and password. Accounts come from sign-up with the class code, or are created by you in Supabase.
   - Sign-up allows about 10 wrong class codes per network address per hour, and 60 new accounts per hour in total. Both limits are kept in memory and reset when the server restarts.
   - Email addresses aren't verified, so a student who mistypes theirs can still sign in with it, but nothing is ever sent to it.
+  - GitHub sign-in only works for GitHub accounts already connected to a CodeBuddy account (or with the same email). Because public sign-up is off, Supabase refuses to create new accounts through GitHub, so the class code can't be skipped that way.
   - The session cookie is `httpOnly` and `SameSite=Lax`, so page scripts can't read it and other websites can't use it to send requests. The API routes also reject requests from other origins.
   - Over plain HTTP, for example on a local network, passwords and session cookies can be read from network traffic. Serve the app over HTTPS.
 - **Usage cap:** each student can ask 20 questions in any 24 hours (enforced in the database). On top of that, the server allows a limited number of AI requests per hour and at the same time, shared by all users.

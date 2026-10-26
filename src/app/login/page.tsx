@@ -1,12 +1,30 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { GitHubSignInButton } from "@/components/auth/github-button";
 import { LoginForm } from "@/components/auth/login-form";
 import { eyebrow, panel } from "@/components/ui/styles";
+import { isGitHubEnabled } from "@/lib/auth/providers";
 
 export const metadata: Metadata = {
   title: "Sign in",
 };
+
+/** Shown only once GitHub sign-in is switched on in Supabase. */
+async function GitHubSignIn() {
+  if (!(await isGitHubEnabled())) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="flex items-center gap-3 text-xs text-muted uppercase before:h-px before:grow before:bg-line after:h-px after:grow after:bg-line">
+        or
+      </p>
+      <GitHubSignInButton />
+      <p className="text-xs leading-relaxed text-muted">
+        Works once you’ve connected GitHub on your Account page.
+      </p>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   return (
@@ -29,6 +47,9 @@ export default function LoginPage() {
       {/* The form reads `?next=` from the URL, which is only known at request time. */}
       <Suspense fallback={<div aria-hidden="true" className={`${panel} h-80`} />}>
         <LoginForm />
+      </Suspense>
+      <Suspense fallback={null}>
+        <GitHubSignIn />
       </Suspense>
       <p className="text-sm text-muted">
         <Link href="/privacy" className="font-semibold text-ink underline underline-offset-4">

@@ -59,6 +59,11 @@ export default function PrivacyPage() {
           only in scrambled (hashed) form, so nobody can read it. Kept until your account is deleted.
         </p>
         <p>
+          <strong>GitHub, if you connect it:</strong> your GitHub username, name, profile picture
+          link and the email address on your GitHub account, so you can sign in with GitHub.
+          Disconnecting GitHub on the Account page removes them.
+        </p>
+        <p>
           <strong>Learn and Debug:</strong> your questions, the code and problem descriptions you send,
           CodeBuddy’s answers, and when you asked. They make up your{" "}
           <Link href="/history" className={link}>
@@ -94,6 +99,14 @@ export default function PrivacyPage() {
         <p>
           <strong>Supabase</strong> stores your account and the data above, in the EU (Paris,
           eu-west-3).
+        </p>
+        <p>
+          <strong>GitHub</strong>, if you sign in with it, confirms who you are to CodeBuddy and
+          knows that you used it to sign in here. See{" "}
+          <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" className={link}>
+            GitHub’s privacy statement
+          </a>
+          .
         </p>
         <p>
           <strong>Cloudflare</strong> delivers the website and secures the connection, so it sees

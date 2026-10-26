@@ -10,12 +10,21 @@ import type { AuthFormState } from "@/lib/auth/validation";
 
 const INITIAL: AuthFormState = {};
 
+/** Messages for `?error=`, set by the GitHub callback. Unknown values show nothing. */
+const LINK_ERRORS: Record<string, string> = {
+  github_not_connected:
+    "That GitHub account isn’t connected to CodeBuddy yet. Create an account with your class code first, then connect GitHub on your Account page.",
+  github_failed: "Signing in with GitHub didn’t work. Try again, or use your email and password.",
+};
+
 /**
  * Email and password sign-in. The Server Action checks the fields again,
  * signs in with Supabase and redirects to `?next=` (same-site paths only).
  */
 export function LoginForm() {
-  const next = useSearchParams().get("next") ?? "/";
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") ?? "/";
+  const linkError = LINK_ERRORS[searchParams.get("error") ?? ""];
   const [state, formAction, pending] = useActionState(signIn, INITIAL);
 
   // After a failed attempt, move focus to the first field that needs fixing.
@@ -54,7 +63,7 @@ export function LoginForm() {
             />
           )}
         </Field>
-        <FormMessage message={state.message} ok={state.ok} />
+        <FormMessage message={state.message ?? linkError} ok={state.ok} />
       </div>
       <SubmitButton pending={pending} label="Sign in" pendingLabel="Signing in…" />
     </form>

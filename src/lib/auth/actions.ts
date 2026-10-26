@@ -1,11 +1,13 @@
 "use server";
 
 import { cookies, headers } from "next/headers";
+import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { canManageAccounts, createConfirmedUser, deleteUserById, verifyPassword } from "@/lib/auth/admin";
 import { getSignupCode, getSupabaseConfig } from "@/lib/auth/config";
-import { loginPathFor, safeNextPath } from "@/lib/auth/paths";
-import { createSupabaseClient, getSignedInUser } from "@/lib/auth/server";
+import { siteOriginFrom } from "@/lib/auth/origin";
+import { LOGIN_PATH, loginPathFor, safeNextPath } from "@/lib/auth/paths";
+import { createSupabaseClient, getSignedInUser, getSupabase } from "@/lib/auth/server";
 import {
   checkSignupCode,
   newAccountLimitReached,
@@ -122,6 +124,69 @@ export async function signUp(_previous: AuthFormState, formData: FormData): Prom
     redirect(loginPathFor(next));
   }
   redirect(next);
+}
+
+/** This site's public address, for the link GitHub sends people back to. */
+async function siteOrigin(): Promise<string> {
+  const h = await headers();
+  return siteOriginFrom((name) => h.get(name));
+}
+
+function callbackUrl(origin: string, next: string): string {
+  return `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+}
+
+/**
+ * Sends the visitor to GitHub. Only GitHub accounts already connected to a
+ * CodeBuddy account get in: public sign-up stays off in Supabase, so new
+ * students still need the class code first.
+ */
+export async function signInWithGitHub(formData: FormData): Promise<void> {
+  const supabase = await getSupabase();
+  if (!supabase) redirect(`${LOGIN_PATH}?error=github_failed`);
+  const next = safeNextPath(formData.get("next"));
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "github",
+    options: { redirectTo: callbackUrl(await siteOrigin(), next) },
+  });
+  if (error || !data.url) {
+    logAuthFailure("github-sign-in", error?.code ?? error?.status);
+    redirect(`${LOGIN_PATH}?error=github_failed`);
+  }
+  redirect(data.url);
+}
+
+/** Connects the signed-in user's GitHub account, so they can sign in with it later. */
+export async function connectGitHub(): Promise<void> {
+  const user = await getSignedInUser();
+  const supabase = user && (await getSupabase());
+  if (!supabase) redirect(loginPathFor("/account"));
+  const { data, error } = await supabase.auth.linkIdentity({
+    provider: "github",
+    options: { redirectTo: callbackUrl(await siteOrigin(), "/account?github=connected") },
+  });
+  if (error || !data.url) {
+    logAuthFailure("github-connect", error?.code ?? error?.status);
+    redirect("/account?github=failed");
+  }
+  redirect(data.url);
+}
+
+/** Removes the GitHub connection; signing in with email and password still works. */
+export async function disconnectGitHub(): Promise<void> {
+  const user = await getSignedInUser();
+  const supabase = user && (await getSupabase());
+  if (!supabase) redirect(loginPathFor("/account"));
+  const { data } = await supabase.auth.getUserIdentities();
+  const github = data?.identities.find((identity) => identity.provider === "github");
+  if (github) {
+    const { error } = await supabase.auth.unlinkIdentity(github);
+    if (error) {
+      logAuthFailure("github-disconnect", error.code ?? error.status);
+      redirect("/account?github=disconnect_failed");
+    }
+  }
+  refresh();
 }
 
 export async function signOut(): Promise<void> {
