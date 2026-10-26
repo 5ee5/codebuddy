@@ -134,7 +134,7 @@ Then open [http://localhost:3000](http://localhost:3000). If port 3000 is in use
 
 ## Environment variables
 
-All four variables are **server-only and required** for Learn and Debug. Never prefix them with `NEXT_PUBLIC_`, because that would expose them to the browser. (The Supabase key is designed to be public, but CodeBuddy never needs it in the browser, so it stays on the server too.)
+The first four variables are **server-only and required** for Learn and Debug; the fifth is optional. Never prefix them with `NEXT_PUBLIC_`, because that would expose them to the browser. (The Supabase key is designed to be public, but CodeBuddy never needs it in the browser, so it stays on the server too.)
 
 | Variable | Required | What it does |
 |---|---|---|
@@ -142,6 +142,7 @@ All four variables are **server-only and required** for Learn and Debug. Never p
 | `ANTHROPIC_MODEL` | Yes | The Claude model ID used by Learn and Debug. There is no built-in default. `.env.example` suggests `claude-sonnet-5-5`; see Anthropic's [models overview](https://platform.claude.com/docs/en/about-claude/models/overview) for current IDs. |
 | `SUPABASE_URL` | Yes | Your Supabase project URL, for example `https://abcdefgh.supabase.co`. |
 | `SUPABASE_PUBLISHABLE_KEY` | Yes | Your Supabase project's publishable (`anon`) key. Never use the secret `service_role` key here. |
+| `SUPABASE_SECRET_KEY` | No | Your Supabase project's **secret** key (`sb_secret_…`, or the legacy `service_role` key). It's used only to let students delete their own account. Without it, the Account page says deletion isn't set up. It bypasses every access rule, so keep it in `.env.local` only. |
 
 ```bash
 # .env.local (placeholders only)
@@ -149,6 +150,7 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 ANTHROPIC_MODEL=claude-sonnet-5-5
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
+SUPABASE_SECRET_KEY=your-supabase-secret-key   # optional, for account deletion
 ```
 
 If any variable is missing, the pages still load. Learn and Debug then answer with a "not set up" message instead of calling Claude, and signing in says it isn't set up.
@@ -164,9 +166,11 @@ If any variable is missing, the pages still load. Learn and Debug then answer wi
 | `/debug` | Debug mode (AI-powered) |
 | `/practice` | Practice mode (answers checked locally, not connected to the AI) |
 | `/login` | Sign in with email and password |
-| `/account` | Shows who is signed in; change password and sign out |
+| `/account` | Shows who is signed in; change password, sign out, delete the account |
 | `/history` | Your saved Learn and Debug answers from the last 90 days |
 | `/history/<id>` | One saved answer |
+| `/privacy` | What is stored, who processes it, for how long, and how to delete it |
+| `/goodbye` | Shown after an account is deleted |
 
 `/learn`, `/debug`, `/account` and `/history` need a signed-in user. Visitors who aren't signed in are sent to `/login` and brought back afterwards. Home and Practice are open to everyone.
 
@@ -264,8 +268,9 @@ supabase/
 - **Usage cap:** each student can ask 20 questions in any 24 hours (enforced in the database). On top of that, the server allows a limited number of AI requests per hour and at the same time, shared by all users.
   - The cap is kept in memory, so it resets when the server restarts and isn't shared between multiple server instances.
   - Requests are never retried automatically, to avoid unexpected charges.
-- **Stored data:** Learn questions, Debug code and descriptions, and the answers are stored in Supabase for 90 days. Practice drafts and progress are kept until the account is deleted.
-- **Not production-ready.** There's no way yet for students to delete their own account, and the app hasn't been reviewed for public deployment.
+- **Stored data:** Learn questions, Debug code and descriptions, and the answers are stored in Supabase for 90 days. Practice drafts and progress are kept until the account is deleted. The `/privacy` page explains this to students; keep it in step with the code.
+- **Account deletion:** students can delete their own account on the Account page after entering their password again. It removes the account, history and Practice progress at once. This is the only place the Supabase secret key is used (`src/lib/auth/admin.ts`).
+- **Not production-ready.** The app hasn't been reviewed for public deployment.
 
 ## Project status and future work
 
@@ -278,7 +283,7 @@ supabase/
 **Known limitations and possible improvements** (planned or under consideration, not implemented):
 - Full verification for every Practice solution. This would need a real sandbox, such as Pyodide or a JavaScript interpreter in an isolated worker or iframe with time limits and no network access, or an isolated server-side runner.
 - AI feedback for Practice solutions. The response format is already defined in the code, but nothing produces it yet.
-- Account deletion by the student, and a privacy page.
+- A "download my data" button (for now, students ask by email, as the privacy page says).
 - A teacher view of students' progress.
 - Streaming AI answers, so long Debug answers appear progressively instead of after a wait.
 

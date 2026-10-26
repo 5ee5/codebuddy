@@ -161,7 +161,12 @@ export default function HomePage() {
             Anthropic&apos;s AI model, and the answer is checked before it&apos;s shown. CodeBuddy
             never runs your code. Practice checks your answer against each exercise&apos;s
             requirements and test cases right in your browser, without running it or sending it
-            anywhere. Accounts and saved learning history come in later milestones.
+            anywhere. Signed-in students get a 90-day history of their answers and saved Practice
+            progress. See{" "}
+            <Link href="/privacy" className="font-semibold underline underline-offset-4">
+              Privacy
+            </Link>{" "}
+            for what is stored.
           </p>
         </section>
 

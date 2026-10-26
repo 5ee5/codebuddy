@@ -27,6 +27,12 @@ export default function LoginPage() {
       <Suspense fallback={<div aria-hidden="true" className={`${panel} h-80`} />}>
         <LoginForm />
       </Suspense>
+      <p className="text-sm text-muted">
+        <Link href="/privacy" className="font-semibold text-ink underline underline-offset-4">
+          Privacy
+        </Link>
+        : what CodeBuddy stores about you and for how long.
+      </p>
     </div>
   );
 }

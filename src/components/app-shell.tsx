@@ -35,7 +35,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               <StatusBadge />
               <p className="hidden text-xs leading-relaxed text-muted md:block">
                 Learn and Debug answers come from Claude. Practice checks your answers in the
-                browser without running them.
+                browser without running them.{" "}
+                <Link href="/privacy" className="underline underline-offset-2 hover:text-ink">
+                  Privacy
+                </Link>
               </p>
             </div>
             <Suspense fallback={<UserMenuFallback />}>

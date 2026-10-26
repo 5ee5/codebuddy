@@ -20,6 +20,17 @@ export function getSupabaseConfig(): SupabaseConfig | null {
 }
 
 /**
+ * The secret key, used only to delete accounts (`src/lib/auth/admin.ts`). It
+ * bypasses every access rule, so it must never be sent anywhere else. `null`
+ * when it isn't set, or when the publishable key was pasted by mistake.
+ */
+export function getSupabaseSecretKey(): string | null {
+  const key = process.env.SUPABASE_SECRET_KEY?.trim();
+  if (!key || key.startsWith("sb_publishable_")) return null;
+  return key;
+}
+
+/**
  * No browser code reads the session, so the cookies can be `httpOnly`: a
  * script injected into the page can't steal them. Supabase's other defaults
  * (`SameSite=Lax`, path `/`) stay.

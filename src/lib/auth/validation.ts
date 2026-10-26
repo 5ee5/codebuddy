@@ -9,7 +9,7 @@ export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 72;
 const EMAIL_MAX_LENGTH = 254;
 
-export type AuthFieldErrors = Partial<Record<"email" | "password" | "confirm", string>>;
+export type AuthFieldErrors = Partial<Record<"email" | "password" | "confirm" | "understood", string>>;
 
 /** What a sign-in or password Server Action reports back to its form. */
 export interface AuthFormState {
@@ -39,6 +39,14 @@ export function validateNewPassword(password: string, confirm: string): AuthFiel
     errors.password = `Use at most ${PASSWORD_MAX_LENGTH} characters.`;
   }
   if (!errors.password && confirm !== password) errors.confirm = "The two passwords don’t match.";
+  return errors;
+}
+
+/** Deleting an account needs the current password and an explicit "I understand". */
+export function validateAccountDeletion(password: string, understood: boolean): AuthFieldErrors {
+  const errors: AuthFieldErrors = {};
+  if (!password) errors.password = "Enter your password to confirm it’s you.";
+  if (!understood) errors.understood = "Tick the box to confirm you understand.";
   return errors;
 }
 

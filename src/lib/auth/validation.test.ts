@@ -3,6 +3,7 @@ import {
   hasFieldErrors,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  validateAccountDeletion,
   validateNewPassword,
   validateSignIn,
 } from "@/lib/auth/validation";
@@ -42,5 +43,13 @@ describe("validateNewPassword", () => {
 
   it("asks for the same password twice", () => {
     expect(validateNewPassword(good, `${good}x`)).toEqual({ confirm: "The two passwords don’t match." });
+  });
+});
+
+describe("validateAccountDeletion", () => {
+  it("needs both the password and the confirmation", () => {
+    expect(hasFieldErrors(validateAccountDeletion("secret", true))).toBe(false);
+    expect(Object.keys(validateAccountDeletion("", true))).toEqual(["password"]);
+    expect(Object.keys(validateAccountDeletion("secret", false))).toEqual(["understood"]);
   });
 });

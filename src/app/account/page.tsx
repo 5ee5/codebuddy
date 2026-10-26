@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { DeleteAccountForm } from "@/components/auth/delete-account-form";
 import { PasswordForm } from "@/components/auth/password-form";
 import { Icon } from "@/components/icons";
 import { buttonSecondary, eyebrow, panel } from "@/components/ui/styles";
@@ -52,6 +53,13 @@ export default function AccountPage() {
           Sign out
         </button>
       </form>
+      <DeleteAccountForm />
+      <p className="text-sm text-muted">
+        <Link href="/privacy" className="font-semibold text-ink underline underline-offset-4">
+          Privacy
+        </Link>
+        : what CodeBuddy stores and for how long.
+      </p>
     </div>
   );
 }
