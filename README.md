@@ -167,6 +167,7 @@ The first four variables are **server-only and required** for Learn and Debug; t
 | `RESEND_API_KEY` | No | Resend API key for sign-up confirmation and password-reset emails. Needs `EMAIL_FROM` and `CODEBUDDY_SITE_URL` too. |
 | `EMAIL_FROM` | No | The sender of those emails, e.g. `CodeBuddy <noreply@your-domain>`; the domain must be verified in Resend. |
 | `CODEBUDDY_SITE_URL` | No | The public address used in email links, e.g. `https://codebuddy.example` (no path). |
+| `DEV_ORIGINS` | No | Development only: other hostnames allowed to open `npm run dev`, such as your LAN address (`192.168.1.10`), comma-separated, without `http://` or a port. |
 | `CODEBUDDY_SIGNUP_CODE` | No | The class code students enter at `/signup`, at least 8 characters. Without it (or with `SUPABASE_SECRET_KEY` missing), sign-up is closed. |
 | `SUPABASE_SECRET_KEY` | No | Your Supabase project's **secret** key (`sb_secret_…`, or the legacy `service_role` key). It's used only to create accounts at sign-up and to let students delete their own account. Without it, both say they aren't set up. It bypasses every access rule, so keep it in `.env.local` only. |
 
