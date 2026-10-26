@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { PasswordForm } from "@/components/auth/password-form";
 import { Icon } from "@/components/icons";
-import { buttonSecondary, eyebrow } from "@/components/ui/styles";
+import { buttonSecondary, eyebrow, panel } from "@/components/ui/styles";
 import { signOut } from "@/lib/auth/actions";
 import { loginPathFor } from "@/lib/auth/paths";
 import { getSignedInUser } from "@/lib/auth/server";
@@ -33,6 +34,17 @@ export default function AccountPage() {
           <SignedInAs />
         </Suspense>
       </div>
+      <Link
+        href="/history"
+        className={`${panel} flex min-h-11 items-center gap-3 p-5 font-semibold transition-colors duration-150 hover:bg-surface-2`}
+      >
+        <Icon name="file" className="size-5 shrink-0" />
+        <span className="grow">
+          History
+          <span className="block text-sm font-normal text-muted">Your saved Learn and Debug answers</span>
+        </span>
+        <Icon name="arrowRight" className="size-4 text-muted" />
+      </Link>
       <PasswordForm />
       <form action={signOut}>
         <button type="submit" className={buttonSecondary}>

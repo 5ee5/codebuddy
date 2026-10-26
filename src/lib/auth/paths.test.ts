@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { isProtectedPath, loginPathFor, safeNextPath } from "@/lib/auth/paths";
 
 describe("isProtectedPath", () => {
-  it.each(["/learn", "/debug", "/account", "/learn/anything"])("protects %s", (path) => {
+  it.each(["/learn", "/debug", "/account", "/history", "/history/some-id", "/learn/anything"])("protects %s", (path) => {
     expect(isProtectedPath(path)).toBe(true);
   });
 
-  it.each(["/", "/practice", "/login", "/learning", "/api/learn"])("leaves %s open", (path) => {
+  it.each(["/", "/practice", "/login", "/learning", "/historyx", "/api/learn"])("leaves %s open", (path) => {
     expect(isProtectedPath(path)).toBe(false);
   });
 });

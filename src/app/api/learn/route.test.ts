@@ -25,6 +25,17 @@ const { getSignedInUser } = vi.hoisted(() => ({ getSignedInUser: vi.fn() }));
 vi.mock("@/lib/auth/server", () => ({ getSignedInUser }));
 const USER = { id: "00000000-0000-4000-8000-000000000001", email: "student@example.com" };
 
+/*
+ * The database is faked as well: by default the student has questions left
+ * and answers are saved.
+ */
+const { claimAiRequest, recordAiAnswer } = vi.hoisted(() => ({
+  claimAiRequest: vi.fn(),
+  recordAiAnswer: vi.fn(),
+}));
+vi.mock("@/lib/db/ai-requests", () => ({ claimAiRequest, recordAiAnswer }));
+const HISTORY_ID = "11111111-2222-4333-8444-555555555555";
+
 const API_KEY = "sk-ant-test-key-never-real";
 const MODEL = "claude-sonnet-5-5";
 const PROVIDER_SECRET = "internal provider detail xyz";
@@ -79,6 +90,8 @@ beforeEach(() => {
   vi.stubEnv("SUPABASE_URL", "https://project.supabase.co");
   vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
   getSignedInUser.mockReset().mockResolvedValue(USER);
+  claimAiRequest.mockReset().mockResolvedValue({ ok: true, requestId: HISTORY_ID, remaining: 19 });
+  recordAiAnswer.mockReset().mockResolvedValue(true);
   errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -169,6 +182,38 @@ describe("POST /api/learn: rejected before any paid call", () => {
   });
 });
 
+describe("POST /api/learn: daily allowance and history", () => {
+  it("returns 429 without calling Claude when today's questions are used up", async () => {
+    claimAiRequest.mockResolvedValue({ ok: false, retryAt: new Date(Date.now() + 3 * 60 * 60 * 1000) });
+    const body = await expectFailure(await post(), 429, "rate_limited");
+    expect(body.message).toMatch(/all 20 of today’s questions.*in about 3 hours/);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 without calling Claude when the allowance can't be checked", async () => {
+    claimAiRequest.mockResolvedValue(null);
+    await expectFailure(await post(), 503, "unavailable");
+    expect(create).not.toHaveBeenCalled();
+    expect(JSON.stringify(errorLog.mock.calls)).toContain("usage_unavailable");
+  });
+
+  it("doesn't claim from the allowance for an invalid request", async () => {
+    await post({ ...validBody, question: "short" });
+    expect(claimAiRequest).not.toHaveBeenCalled();
+  });
+
+  it("still returns the answer when saving it fails, without a history link", async () => {
+    create.mockResolvedValueOnce(message(JSON.stringify(validAnswer)));
+    recordAiAnswer.mockResolvedValue(false);
+    const res = await post();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("answered");
+    expect(body.remainingToday).toBe(19);
+    expect(body).not.toHaveProperty("historyId");
+  });
+});
+
 describe("POST /api/learn: model call", () => {
   it("returns a validated answer and sends the expected request", async () => {
     create.mockResolvedValueOnce(message(JSON.stringify(validAnswer)));
@@ -184,6 +229,13 @@ describe("POST /api/learn: model call", () => {
       response: { mode: "learn", ...validAnswer },
     });
     expect(Date.parse(body.createdAt)).not.toBeNaN();
+    expect(body).toMatchObject({ remainingToday: 19, historyId: HISTORY_ID });
+    expect(claimAiRequest).toHaveBeenCalledWith("learn");
+    expect(recordAiAnswer).toHaveBeenCalledWith(
+      HISTORY_ID,
+      expect.objectContaining({ status: "answered", response: body.response }),
+      { mode: "learn", question: "What is a for loop in Python?", level: "beginner", topic: "Loops" },
+    );
 
     expect(createAnthropicClient).toHaveBeenCalledWith(API_KEY);
     expect(create).toHaveBeenCalledTimes(1);

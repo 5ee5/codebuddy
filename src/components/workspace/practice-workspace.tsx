@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Icon } from "@/components/icons";
 import { ResponsePanel } from "@/components/response-panel";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -11,6 +12,8 @@ import { buttonGhost, eyebrow, panel } from "@/components/ui/styles";
 import { FormFooter } from "@/components/workspace/form-footer";
 import type { PracticeRequest } from "@/lib/assistant/types";
 import { hasErrors, validatePractice } from "@/lib/assistant/validation";
+import { loginPathFor } from "@/lib/auth/paths";
+import { loadPracticeProgress, savePracticeProgress } from "@/lib/db/practice-actions";
 import {
   DIFFICULTY_LABELS,
   EXERCISES,
@@ -21,6 +24,7 @@ import {
 import { LANGUAGE_EXTENSIONS, LANGUAGE_LABELS } from "@/lib/languages";
 import { getMode } from "@/lib/modes";
 import { checkAnswer } from "@/lib/practice/check";
+import type { PracticeSave } from "@/lib/practice/progress";
 import type { PracticeCheck } from "@/lib/practice/types";
 
 const mode = getMode("practice");
@@ -47,12 +51,57 @@ function DifficultyMeter({ difficulty }: { difficulty: Difficulty }) {
   );
 }
 
-const EXERCISE_OPTIONS: readonly RadioCardOption<string>[] = EXERCISES.map((ex) => ({
-  value: ex.id,
-  label: ex.title,
-  description: LANGUAGE_LABELS[ex.language],
-  meta: <DifficultyMeter difficulty={ex.difficulty} />,
-}));
+function exerciseOptions(solved: ReadonlySet<string>): RadioCardOption<string>[] {
+  return EXERCISES.map((ex) => ({
+    value: ex.id,
+    label: ex.title,
+    description: solved.has(ex.id) ? (
+      <span className="inline-flex items-center gap-1.5">
+        {LANGUAGE_LABELS[ex.language]} ·
+        <Icon name="check" className="size-3.5 text-mode" />
+        Solved
+      </span>
+    ) : (
+      LANGUAGE_LABELS[ex.language]
+    ),
+    meta: <DifficultyMeter difficulty={ex.difficulty} />,
+  }));
+}
+
+/** Wait this long after the last change before saving a draft. */
+const SAVE_DELAY_MS = 1500;
+
+type Account = "unknown" | "signedOut" | "signedIn";
+type SaveState = "idle" | "saving" | "saved" | "error" | "loadError";
+
+/** Tells the student whether their work is kept, in one quiet line. */
+function SaveStatus({ account, state }: { account: Account; state: SaveState }) {
+  let text: ReactNode = null;
+  if (account === "signedOut") {
+    text = (
+      <>
+        Your work is kept only while this page is open.{" "}
+        <Link href={loginPathFor("/practice")} className="font-semibold text-ink underline underline-offset-4">
+          Sign in
+        </Link>{" "}
+        to save your progress.
+      </>
+    );
+  } else if (account === "signedIn") {
+    text = {
+      idle: "Your progress is saved to your account.",
+      saving: "Saving…",
+      saved: "Saved to your account.",
+      error: "Couldn’t save your progress. It will try again when you make a change.",
+      loadError: "Couldn’t load your saved progress. Try reloading the page.",
+    }[state];
+  }
+  return (
+    <p aria-live="polite" className="mt-2 min-h-5 text-xs leading-relaxed text-muted">
+      {text}
+    </p>
+  );
+}
 
 export function PracticeWorkspace() {
   const [exerciseId, setExerciseId] = useState(EXERCISES[0].id);
@@ -63,6 +112,88 @@ export function PracticeWorkspace() {
   // The last check for each exercise, kept alongside its draft.
   const [checks, setChecks] = useState<Record<string, PracticeCheck | undefined>>({});
   const panelRef = useRef<HTMLElement>(null);
+
+  // Saving for signed-in students: changes are collected per exercise and
+  // sent together a moment after the student stops typing.
+  const [account, setAccount] = useState<Account>("unknown");
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [solvedIds, setSolvedIds] = useState<ReadonlySet<string>>(new Set());
+  const pendingSaves = useRef(new Map<string, PracticeSave>());
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(null);
+
+  const flushSaves = useCallback(async () => {
+    saveTimer.current = null;
+    const saves = [...pendingSaves.current.values()];
+    if (saves.length === 0) return;
+    pendingSaves.current.clear();
+    setSaveState("saving");
+    const ok = await savePracticeProgress(saves).catch(() => false);
+    if (!ok) {
+      // Keep them for the next attempt, unless newer changes replaced them.
+      for (const save of saves) {
+        if (!pendingSaves.current.has(save.exerciseId)) pendingSaves.current.set(save.exerciseId, save);
+      }
+    }
+    setSaveState(ok ? "saved" : "error");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadPracticeProgress()
+      .then((result) => {
+        if (cancelled) return;
+        if (!result.signedIn) {
+          setAccount("signedOut");
+          return;
+        }
+        setAccount("signedIn");
+        const progress = result.progress;
+        if (!progress) {
+          setSaveState("loadError");
+          return;
+        }
+        // Anything typed before the saved progress arrived wins.
+        setSolutions((prev) => {
+          const next = { ...prev };
+          for (const p of progress) if (next[p.exerciseId] === undefined && p.draft) next[p.exerciseId] = p.draft;
+          return next;
+        });
+        setHintsOpened((prev) => {
+          const next = { ...prev };
+          for (const p of progress) {
+            const saved = Array.from({ length: p.hintsUsed }, (_, i) => i);
+            next[p.exerciseId] = [...new Set([...(prev[p.exerciseId] ?? []), ...saved])];
+          }
+          return next;
+        });
+        setSolvedIds((prev) => new Set([...prev, ...progress.filter((p) => p.solved).map((p) => p.exerciseId)]));
+      })
+      // Couldn't reach the server: Practice still works, just without saving.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Send anything still waiting when the student leaves the page.
+  useEffect(
+    () => () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        void flushSaves();
+      }
+    },
+    [flushSaves],
+  );
+
+  function queueSave(save: PracticeSave, immediately = false) {
+    if (account !== "signedIn") return;
+    const previous = pendingSaves.current.get(save.exerciseId);
+    const checked = save.checked || previous?.checked;
+    pendingSaves.current.set(save.exerciseId, { ...save, ...(checked ? { checked } : {}) });
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(flushSaves, immediately ? 0 : SAVE_DELAY_MS);
+  }
 
   const exercise: Exercise = getExercise(exerciseId) ?? EXERCISES[0];
   const solution = solutions[exercise.id] ?? exercise.starterCode;
@@ -85,13 +216,16 @@ export function PracticeWorkspace() {
 
   function setSolution(value: string) {
     setSolutions((prev) => ({ ...prev, [exercise.id]: value }));
+    queueSave({ exerciseId: exercise.id, draft: value, hintsUsed: opened.length });
   }
 
   function markHintOpened(index: number) {
+    if (opened.includes(index)) return;
     setHintsOpened((prev) => {
       const current = prev[exercise.id] ?? [];
       return current.includes(index) ? prev : { ...prev, [exercise.id]: [...current, index] };
     });
+    queueSave({ exerciseId: exercise.id, draft: solution, hintsUsed: opened.length + 1 });
   }
 
   /** Checks the answer in the browser by reading it; the code is never run or sent. */
@@ -103,7 +237,10 @@ export function PracticeWorkspace() {
       document.getElementById("practice-solution")?.focus();
       return;
     }
-    setCheck(checkAnswer(exercise, request.solution));
+    const result = checkAnswer(exercise, request.solution);
+    setCheck(result);
+    if (result.verdict === "correct") setSolvedIds((prev) => new Set([...prev, exercise.id]));
+    queueSave({ exerciseId: exercise.id, draft: solution, hintsUsed: opened.length, checked: true }, true);
     panelRef.current?.focus();
   }
 
@@ -115,7 +252,7 @@ export function PracticeWorkspace() {
             <RadioCards
               name="exercise"
               legend="Choose an exercise"
-              options={EXERCISE_OPTIONS}
+              options={exerciseOptions(solvedIds)}
               value={exercise.id}
               onChange={(id) => {
                 setExerciseId(id);
@@ -216,6 +353,7 @@ export function PracticeWorkspace() {
                 />
               )}
             </Field>
+            <SaveStatus account={account} state={saveState} />
           </div>
         </div>
 

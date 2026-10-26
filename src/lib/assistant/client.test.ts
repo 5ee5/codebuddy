@@ -38,6 +38,22 @@ describe("askLearn", () => {
     expect(result).toEqual(answer);
   });
 
+  it("keeps the daily allowance and history id, but only a well-formed id", async () => {
+    const answer = {
+      status: "answered",
+      mode: "learn",
+      model: "claude-sonnet-5-5",
+      createdAt: "2026-10-24T12:00:00.000Z",
+      response: { mode: "learn", explanation: "A variable stores a value.", keyPoints: ["Names point at values."], followUpQuestions: [] },
+    };
+    const id = "11111111-2222-4333-8444-555555555555";
+    mockFetch(async () => Response.json({ ...answer, remainingToday: 7, historyId: id }));
+    expect(await askLearn(request)).toEqual({ ...answer, remainingToday: 7, historyId: id });
+
+    mockFetch(async () => Response.json({ ...answer, remainingToday: "7", historyId: "../../evil" }));
+    expect(await askLearn(request)).toEqual(answer);
+  });
+
   it("passes through a server failure with its field errors", async () => {
     mockFetch(async () =>
       Response.json(

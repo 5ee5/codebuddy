@@ -7,8 +7,10 @@ import { MODES } from "@/lib/modes";
 
 /*
  * The only client component in the shell: it needs `usePathname()` to mark
- * the current page. All routes are static, so with Cache Components enabled
- * the pathname is known at prerender time and no Suspense boundary is needed.
+ * the current page. On static routes the pathname is known at prerender time.
+ * Routes with a dynamic segment (`/history/[id]`) only know it at request
+ * time, so the shell wraps the links in <Suspense> and shows
+ * `NavLinksFallback` (the same links, none marked) until it streams in.
  */
 interface NavItem {
   href: string;
@@ -28,7 +30,8 @@ const MODE_ITEMS: readonly NavItem[] = MODES.map((m) => ({
   mode: m.id,
 }));
 
-function isActive(pathname: string, href: string) {
+function isActive(pathname: string | null, href: string) {
+  if (pathname === null) return false;
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -55,9 +58,17 @@ function SidebarLink({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
-export function NavLinks({ variant }: { variant: "sidebar" | "tabs" }) {
-  const pathname = usePathname();
+type Variant = "sidebar" | "tabs";
 
+export function NavLinks({ variant }: { variant: Variant }) {
+  return <NavList variant={variant} pathname={usePathname()} />;
+}
+
+export function NavLinksFallback({ variant }: { variant: Variant }) {
+  return <NavList variant={variant} pathname={null} />;
+}
+
+function NavList({ variant, pathname }: { variant: Variant; pathname: string | null }) {
   if (variant === "tabs") {
     return (
       <ul className="grid grid-cols-4">

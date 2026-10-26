@@ -26,6 +26,17 @@ const { getSignedInUser } = vi.hoisted(() => ({ getSignedInUser: vi.fn() }));
 vi.mock("@/lib/auth/server", () => ({ getSignedInUser }));
 const USER = { id: "00000000-0000-4000-8000-000000000001", email: "student@example.com" };
 
+/*
+ * The database is faked as well: by default the student has questions left
+ * and answers are saved.
+ */
+const { claimAiRequest, recordAiAnswer } = vi.hoisted(() => ({
+  claimAiRequest: vi.fn(),
+  recordAiAnswer: vi.fn(),
+}));
+vi.mock("@/lib/db/ai-requests", () => ({ claimAiRequest, recordAiAnswer }));
+const HISTORY_ID = "11111111-2222-4333-8444-555555555555";
+
 const API_KEY = "sk-ant-test-key-never-real";
 const MODEL = "claude-sonnet-5-5";
 const PROVIDER_SECRET = "internal provider detail xyz";
@@ -106,6 +117,8 @@ beforeEach(() => {
   vi.stubEnv("SUPABASE_URL", "https://project.supabase.co");
   vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
   getSignedInUser.mockReset().mockResolvedValue(USER);
+  claimAiRequest.mockReset().mockResolvedValue({ ok: true, requestId: HISTORY_ID, remaining: 19 });
+  recordAiAnswer.mockReset().mockResolvedValue(true);
   errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -230,7 +243,14 @@ describe("POST /api/debug: model call", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = await res.json();
-    expect(body).toMatchObject({ status: "answered", mode: "debug", model: MODEL });
+    expect(body).toMatchObject({ status: "answered", mode: "debug", model: MODEL, historyId: HISTORY_ID });
+    expect(claimAiRequest).toHaveBeenCalledWith("debug");
+    expect(recordAiAnswer).toHaveBeenCalledWith(HISTORY_ID, expect.anything(), {
+      mode: "debug",
+      language: "python",
+      code: STUDENT_CODE,
+      problem: STUDENT_PROBLEM,
+    });
     expect(body.response).toEqual({ mode: "debug", ...diagnosed });
     expect(body.response.correctedCode.code).toBe(FIXED);
     expect(Date.parse(body.createdAt)).not.toBeNaN();

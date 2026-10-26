@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { UserMenu, UserMenuFallback } from "@/components/auth/user-menu";
 import { LogoMark } from "@/components/icons";
-import { NavLinks } from "@/components/nav-links";
+import { NavLinks, NavLinksFallback } from "@/components/nav-links";
 import { StatusBadge } from "@/components/status-badge";
 
 /*
@@ -25,7 +25,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
 
           <nav aria-label="Main" className="hidden md:block">
-            <NavLinks variant="sidebar" />
+            <Suspense fallback={<NavLinksFallback variant="sidebar" />}>
+              <NavLinks variant="sidebar" />
+            </Suspense>
           </nav>
 
           <div className="flex min-w-0 items-center gap-3 md:mt-auto md:flex-col md:items-stretch md:gap-4 md:border-t md:border-line md:pt-4">
@@ -57,7 +59,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         aria-label="Main"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
       >
-        <NavLinks variant="tabs" />
+        <Suspense fallback={<NavLinksFallback variant="tabs" />}>
+          <NavLinks variant="tabs" />
+        </Suspense>
       </nav>
     </div>
   );

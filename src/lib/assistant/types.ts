@@ -135,6 +135,10 @@ export interface AssistantAnswer<R extends AssistantRequest = AssistantRequest> 
   /** The model that produced the answer, shown to the learner. */
   model: string;
   createdAt: string;
+  /** Questions the student can still ask in the next 24 hours, when known. */
+  remainingToday?: number;
+  /** Set when the answer was saved to the student's history. */
+  historyId?: string;
 }
 
 export type AssistantErrorCode =

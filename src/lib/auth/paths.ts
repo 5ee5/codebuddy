@@ -3,8 +3,8 @@
  * sign in. Pure functions, shared by the proxy, the sign-in action and tests.
  */
 
-/** Learn and Debug call the paid AI; Account manages the user's own data. Practice stays open. */
-export const PROTECTED_PATHS = ["/learn", "/debug", "/account"] as const;
+/** Learn and Debug call the paid AI; Account and History hold the user's own data. Practice stays open. */
+export const PROTECTED_PATHS = ["/learn", "/debug", "/account", "/history"] as const;
 
 export const LOGIN_PATH = "/login";
 

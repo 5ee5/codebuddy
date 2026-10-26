@@ -5,15 +5,18 @@ import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { cache } from "react";
 import { getSupabaseConfig, SESSION_COOKIE_OPTIONS, type SupabaseConfig } from "@/lib/auth/config";
+import type { Database } from "@/lib/db/types";
 
 /*
  * Supabase access for Server Components, Server Actions and Route Handlers.
  * A new client is created for every request, as `@supabase/ssr` requires.
  */
 
-export async function createSupabaseClient(config: SupabaseConfig): Promise<SupabaseClient> {
+export type CodeBuddyClient = SupabaseClient<Database>;
+
+export async function createSupabaseClient(config: SupabaseConfig): Promise<CodeBuddyClient> {
   const cookieStore = await cookies();
-  return createServerClient(config.url, config.publishableKey, {
+  return createServerClient<Database>(config.url, config.publishableKey, {
     cookieOptions: SESSION_COOKIE_OPTIONS,
     cookies: {
       getAll: () => cookieStore.getAll(),
@@ -26,6 +29,18 @@ export async function createSupabaseClient(config: SupabaseConfig): Promise<Supa
       },
     },
   });
+}
+
+/**
+ * A client that acts as the signed-in user, so the database's row-level
+ * security applies. `null` when Supabase isn't configured.
+ */
+export async function getSupabase(): Promise<CodeBuddyClient | null> {
+  // The client reads the clock to check the session, so this must run at
+  // request time, never while a page is being prerendered.
+  await connection();
+  const config = getSupabaseConfig();
+  return config ? createSupabaseClient(config) : null;
 }
 
 export interface SignedInUser {

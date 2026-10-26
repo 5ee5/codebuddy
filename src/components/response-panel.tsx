@@ -133,6 +133,23 @@ export function ResponsePanel({
         ) : result?.status === "answered" ? (
           <div className="flex flex-col gap-6">
             {result.mode === "learn" ? <LearnAnswer answer={result} /> : <DebugAnswer answer={result} />}
+            {(result.historyId || result.remainingToday !== undefined) && (
+              <p className="text-sm leading-relaxed text-muted">
+                {result.historyId && (
+                  <>
+                    <Link
+                      href={`/history/${result.historyId}`}
+                      className="font-semibold text-ink underline underline-offset-4"
+                    >
+                      Saved in your history
+                    </Link>
+                    .{" "}
+                  </>
+                )}
+                {result.remainingToday !== undefined &&
+                  `You can ask ${result.remainingToday === 1 ? "1 more question" : `${result.remainingToday} more questions`} in the next 24 hours.`}
+              </p>
+            )}
             {onNewSession && (
               <div className="border-t border-line pt-5">
                 <button type="button" onClick={onNewSession} className={buttonSecondary}>

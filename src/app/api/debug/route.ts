@@ -1,6 +1,7 @@
 import { failure } from "@/lib/assistant/errors";
 import type { AssistantAnswer, DebugRequest } from "@/lib/assistant/types";
 import { hasErrors, parseDebugRequest, validateDebug } from "@/lib/assistant/validation";
+import { claimAiRequest, recordAiAnswer } from "@/lib/db/ai-requests";
 import { acquireSlot } from "@/lib/server/usage-cap";
 import { createAnthropicClient } from "@/lib/server/anthropic";
 import { answerDebug } from "@/lib/server/debug";
@@ -10,13 +11,15 @@ import {
   jsonResult,
   logFailure,
 } from "@/lib/server/route-guard";
+import { dailyLimitResponse } from "@/lib/server/daily-limit";
 
 /*
  * POST /api/debug: diagnoses a student's bug with the paid AI API.
  *
  * Same protections and order as /api/learn: same origin, body type and size,
- * server configuration, signed-in user, request validation, then the usage cap
- * that Learn and Debug share. The submitted code and problem are never
+ * server configuration, signed-in user, request validation, the usage cap
+ * that Learn and Debug share, then the student's daily allowance. Answers are
+ * saved to the student's history. The submitted code and problem are never
  * logged; failures return fixed, friendly messages only.
  */
 
@@ -47,6 +50,15 @@ export async function POST(request: Request): Promise<Response> {
   if (!release) return capReachedResponse();
 
   try {
+    // The student's own daily allowance, kept in the database. If it can't be
+    // checked, don't spend money.
+    const claim = await claimAiRequest("debug");
+    if (!claim) {
+      logFailure(ROUTE, "usage_unavailable", 503);
+      return jsonResult(failure("unavailable"), 503);
+    }
+    if (!claim.ok) return dailyLimitResponse(claim.retryAt);
+
     const outcome = await answerDebug(debugRequest, {
       client: createAnthropicClient(guard.config.apiKey),
       model: guard.config.model,
@@ -62,8 +74,11 @@ export async function POST(request: Request): Promise<Response> {
       response: outcome.response,
       model: outcome.model,
       createdAt: new Date().toISOString(),
+      remainingToday: claim.remaining,
     };
-    return jsonResult(answer, 200);
+    // A failed save is logged but doesn't cost the student their answer.
+    const saved = await recordAiAnswer(claim.requestId, answer, debugRequest);
+    return jsonResult(saved ? { ...answer, historyId: claim.requestId } : answer, 200);
   } finally {
     release();
   }

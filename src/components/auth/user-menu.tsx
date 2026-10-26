@@ -7,8 +7,8 @@ import { getSignedInUser } from "@/lib/auth/server";
 /*
  * Who is signed in, for the app shell (server component). It reads the
  * session cookie, so the shell renders it inside <Suspense>. On phones it is
- * a single link in the top bar; in the sidebar it also shows the email and a
- * sign-out button.
+ * a single link in the top bar; in the sidebar it also shows the email, a
+ * link to History and a sign-out button.
  */
 
 const link =
@@ -32,6 +32,10 @@ export async function UserMenu() {
         <Icon name="user" className="size-[18px] shrink-0" />
         <span className="md:hidden">Account</span>
         <span className="hidden truncate font-medium md:inline">{user.email ?? "Your account"}</span>
+      </Link>
+      <Link href="/history" className={`${link} hidden font-medium md:flex`}>
+        <Icon name="file" className="size-[18px] shrink-0" />
+        History
       </Link>
       <form action={signOut} className="hidden md:block">
         <button type="submit" className={`${buttonGhost} w-full justify-start px-2`}>

@@ -47,7 +47,7 @@ CodeBuddy has three modes. **Learn and Debug are connected to Claude. Practice c
 
 - Each exercise has a description, a requirements checklist, starter code, and hints you can open one at a time. A counter shows how many hints you've used.
 - You write your solution in a code editor with line numbers. It's pre-filled with the starter code, and "Reset to starter code" restores it.
-- **Drafts are kept separately for each exercise while the page is open.** Switching exercises doesn't lose your work, but drafts aren't saved, so reloading the page discards them.
+- **Drafts are kept separately for each exercise.** Switching exercises doesn't lose your work. If you're signed in, your drafts, the hints you've opened and the exercises you've solved are saved to your account (a moment after you stop typing) and come back on your next visit. Solved exercises get a ✓ in the list. Without an account, drafts last only while the page is open.
 - **Check answer** checks your solution in the browser and shows:
   - a verdict: *Correct*, *Partly correct*, *Not correct yet*, or *Checks passed, run it to confirm*;
   - each requirement, marked as passed, not met or not checked, with what CodeBuddy found;
@@ -55,6 +55,11 @@ CodeBuddy has three modes. **Learn and Debug are connected to Claude. Practice c
   - one hint for what to fix next, without giving away the solution.
 - **Your code is never run.** It isn't sent to a server or to the AI either. CodeBuddy reads the code as text (`src/lib/practice/`). For each exercise it recognises a few common ways of writing the solution, such as a running-total loop, an `if / else if` chain or an f-string. For those it works out the test results exactly. Code written another way still gets the requirement checks, but the verdict says it can't be confirmed without running it. It is never marked correct on a guess.
 - **Limitation:** solutions outside the recognised shapes (for example `while` loops, recursion, `str.count`, or FizzBuzz built up as a string) can't be fully verified. Run them yourself and compare with the expected values shown.
+
+### History and daily allowance
+
+- Every Learn and Debug answer is saved to your **History** (`/history`) for 90 days. You can reopen an answer, delete one, or clear everything.
+- Each student can ask **20 Learn or Debug questions in any 24 hours**. After an answer, CodeBuddy shows how many are left. Deleting history doesn't give questions back.
 
 ### Across the app
 
@@ -103,6 +108,18 @@ Learn and Debug are only for signed-in users. CodeBuddy is invite-only: there is
 
 Because accounts are created already confirmed, CodeBuddy doesn't need to send any email.
 
+### Create the database tables
+
+History, the daily allowance and Practice progress are stored in your Supabase database. The SQL is in `supabase/migrations/`. Run each file once, in order:
+
+1. In Supabase, open **SQL Editor → New query**.
+2. Paste `20261026130000_ai_requests_and_practice_progress.sql` and click **Run**.
+3. Paste `20261026130100_delete_old_ai_requests.sql` and click **Run**. It schedules the nightly deletion of history older than 90 days. If it fails with a permissions error, enable **pg_cron** under **Database → Extensions** and run it again.
+
+(With the [Supabase CLI](https://supabase.com/docs/guides/cli), `supabase link` and then `supabase db push` does the same.)
+
+**Run the SQL before you start the new version of the app.** Learn and Debug check each student's allowance in the database, and if the tables don't exist they refuse to call Claude.
+
 ### Run it
 
 Start the development server:
@@ -148,8 +165,10 @@ If any variable is missing, the pages still load. Learn and Debug then answer wi
 | `/practice` | Practice mode (answers checked locally, not connected to the AI) |
 | `/login` | Sign in with email and password |
 | `/account` | Shows who is signed in; change password and sign out |
+| `/history` | Your saved Learn and Debug answers from the last 90 days |
+| `/history/<id>` | One saved answer |
 
-`/learn`, `/debug` and `/account` need a signed-in user. Visitors who aren't signed in are sent to `/login` and brought back afterwards. Home and Practice are open to everyone.
+`/learn`, `/debug`, `/account` and `/history` need a signed-in user. Visitors who aren't signed in are sent to `/login` and brought back afterwards. Home and Practice are open to everyone.
 
 Unknown paths show a custom "page not found" page.
 
@@ -183,6 +202,8 @@ The tests run in Node and replace the Anthropic client with a mock. **They don't
 - request and response validation;
 - the API routes' security checks and error handling;
 - the browser client;
+- the daily allowance and history in the API routes (with the database faked);
+- Practice progress checks, and that the database's exercise list and limit match the code;
 - code formatting and copying;
 - the answer views and the Debug session state.
 
@@ -195,6 +216,7 @@ src/
 │   ├── api/debug/        POST /api/debug
 │   ├── learn/ debug/ practice/   Mode pages
 │   ├── login/ account/   Sign-in and account pages
+│   ├── history/          Saved Learn and Debug answers
 │   └── page.tsx, layout.tsx, not-found.tsx, globals.css
 ├── proxy.ts              Refreshes the sign-in session; sends signed-out visitors to /login
 ├── components/           UI: app shell, navigation, mode workspaces, answer views
@@ -204,12 +226,15 @@ src/
 ├── lib/
 │   ├── assistant/        Shared request/response types, validation and the browser client
 │   ├── auth/             Supabase sign-in: session helpers, Server Actions, protected paths
+│   ├── db/               Database access: daily allowance, history, Practice progress, table types
 │   ├── server/           Server-only code: configuration, request checks, usage cap, Claude calls, prompts
 │   ├── practice/         Practice answer checker: reads code as text, never runs it
 │   ├── modes.ts          The three modes (labels, descriptions, sections)
 │   ├── exercises.ts      Practice exercises
 │   └── languages.ts      Supported programming languages
 └── test/                 Small helpers for the test suite
+supabase/
+└── migrations/           SQL for the database tables, access rules and functions
 ```
 
 - **Browser:** each workspace validates input with the same rules the server uses, then sends the request to its API route. Answers are checked against the expected format again before they're shown.
@@ -219,10 +244,12 @@ src/
   3. that the server configuration is complete;
   4. that a user is signed in;
   5. the request fields;
-  6. a shared usage cap.
+  6. a shared usage cap;
+  7. the student's daily allowance, in the database.
 
-  Only then does it call Claude. The model's reply must match a strict JSON format, and anything that doesn't match is rejected instead of shown.
+  Only then does it call Claude. The answer is then saved to the student's history. The model's reply must match a strict JSON format, and anything that doesn't match is rejected instead of shown.
 - **Sign-in:** pages use Server Actions to sign in, sign out and change passwords, so the browser never talks to Supabase directly. `src/proxy.ts` refreshes the session on each request and redirects signed-out visitors away from protected pages. That's only for navigation: the API routes check the user again before any paid call.
+- **Database:** tables for Learn and Debug requests (`ai_requests`) and Practice progress (`practice_progress`). Row-level security lets each student see only their own rows. Students can't write `ai_requests` directly: the functions `claim_ai_request`, `record_ai_answer` and `clear_ai_history` do, so the daily limit can't be bypassed or reset. CodeBuddy talks to the database as the signed-in student, never with an admin key.
 - **Server-only boundary:** the Anthropic and Supabase settings are read only in `src/lib/server/` and `src/lib/auth/`, whose modules are marked `server-only`. They never reach the browser bundle.
 
 ## Security and limitations
@@ -234,10 +261,11 @@ src/
 - **Accounts:** sign-in uses Supabase Auth with email and password, and only accounts you create can sign in.
   - The session cookie is `httpOnly` and `SameSite=Lax`, so page scripts can't read it and other websites can't use it to send requests. The API routes also reject requests from other origins.
   - Over plain HTTP, for example on a local network, passwords and session cookies can be read from network traffic. Serve the app over HTTPS.
-- **Usage cap:** the server allows a limited number of AI requests per hour and at the same time, shared by all users. There are no per-user limits yet.
+- **Usage cap:** each student can ask 20 questions in any 24 hours (enforced in the database). On top of that, the server allows a limited number of AI requests per hour and at the same time, shared by all users.
   - The cap is kept in memory, so it resets when the server restarts and isn't shared between multiple server instances.
   - Requests are never retried automatically, to avoid unexpected charges.
-- **Not production-ready.** There are no per-user limits and no saved history yet, and the app hasn't been reviewed for public deployment.
+- **Stored data:** Learn questions, Debug code and descriptions, and the answers are stored in Supabase for 90 days. Practice drafts and progress are kept until the account is deleted.
+- **Not production-ready.** There's no way yet for students to delete their own account, and the app hasn't been reviewed for public deployment.
 
 ## Project status and future work
 
@@ -245,14 +273,14 @@ src/
 - Learn and Debug are fully working with Claude.
 - Practice offers exercises, hints and an editor, and checks answers locally with requirement checks and test cases. It gives no AI feedback.
 - Learn and Debug need a signed-in user. Accounts are invite-only and created in Supabase.
-- Nothing else is stored between sessions.
+- Signed-in students get a 90-day history of Learn and Debug answers, a daily allowance of 20 questions, and saved Practice progress.
 
 **Known limitations and possible improvements** (planned or under consideration, not implemented):
 - Full verification for every Practice solution. This would need a real sandbox, such as Pyodide or a JavaScript interpreter in an isolated worker or iframe with time limits and no network access, or an isolated server-side runner.
 - AI feedback for Practice solutions. The response format is already defined in the code, but nothing produces it yet.
-- Saved learning history and Practice progress for signed-in users.
+- Account deletion by the student, and a privacy page.
+- A teacher view of students' progress.
 - Streaming AI answers, so long Debug answers appear progressively instead of after a wait.
-- Per-user rate limiting before any public deployment.
 
 ## License
 

@@ -39,6 +39,9 @@ export async function previewRequest<R extends AssistantRequest>(
 
 const ERROR_CODES = Object.keys(FAILURE_MESSAGES) as AssistantErrorCode[];
 
+/** History ids are UUIDs; anything else is ignored rather than put into a link. */
+const SAFE_ID = /^[0-9a-f-]{36}$/i;
+
 interface PostOptions<R extends AssistantRequest> {
   /** Re-checks the answer against the mode's contract. */
   parse: (response: unknown) => ResponseFor<R> | null;
@@ -102,7 +105,15 @@ function readResult<R extends AssistantRequest>(
     if (!response || typeof data.model !== "string" || typeof data.createdAt !== "string") {
       return failure("malformed_output");
     }
-    return { status: "answered", mode, response, model: data.model, createdAt: data.createdAt };
+    return {
+      status: "answered",
+      mode,
+      response,
+      model: data.model,
+      createdAt: data.createdAt,
+      ...(typeof data.remainingToday === "number" ? { remainingToday: data.remainingToday } : {}),
+      ...(typeof data.historyId === "string" && SAFE_ID.test(data.historyId) ? { historyId: data.historyId } : {}),
+    };
   }
 
   if (data.status === "error" && ERROR_CODES.includes(data.code as AssistantErrorCode)) {
