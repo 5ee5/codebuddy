@@ -140,7 +140,7 @@ History, the daily allowance and Practice progress are stored in your Supabase d
 
 (With the [Supabase CLI](https://supabase.com/docs/guides/cli), `supabase link` and then `supabase db push` does the same.)
 
-**Run the SQL before you start the new version of the app.** Learn and Debug check each student's allowance in the database, and if the tables don't exist they refuse to call Claude.
+**Run the SQL before you start the app.** Learn and Debug check each student's allowance in the database, and if the tables don't exist they refuse to call Claude.
 
 ### Run it
 
@@ -243,6 +243,10 @@ The tests run in Node and replace the Anthropic client with a mock. **They don't
 - the API routes' security checks and error handling;
 - the browser client;
 - the daily allowance and history in the API routes (with the database faked);
+- sign-in, sign-up with the class code, and its rate limits;
+- GitHub sign-in and connecting GitHub, including the `/auth/callback` route;
+- confirmation and password-reset emails, and the links in them (with Resend faked);
+- account deletion and safe redirects after sign-in;
 - Practice progress checks, and that the database's exercise list and limit match the code;
 - code formatting and copying;
 - the answer views and the Debug session state.
@@ -255,20 +259,26 @@ src/
 │   ├── api/learn/        POST /api/learn
 │   ├── api/debug/        POST /api/debug
 │   ├── learn/ debug/ practice/   Mode pages
-│   ├── login/ account/   Sign-in and account pages
+│   ├── login/ signup/ account/   Sign-in, sign-up and account pages
+│   ├── forgot-password/ reset-password/   Password reset
+│   ├── auth/callback/    Where GitHub sign-in returns to
+│   ├── auth/confirm/     Where links in emails open
 │   ├── history/          Saved Learn and Debug answers
+│   ├── privacy/ goodbye/ Privacy page; the page shown after account deletion
 │   └── page.tsx, layout.tsx, not-found.tsx, globals.css
 ├── proxy.ts              Refreshes the sign-in session; sends signed-out visitors to /login
 ├── components/           UI: app shell, navigation, mode workspaces, answer views
-│   ├── auth/             Sign-in and password forms, the user menu
+│   ├── auth/             Sign-in, sign-up, password and account-deletion forms, the user menu
 │   ├── workspace/        Learn, Debug and Practice forms (client components)
 │   └── ui/               Reusable pieces: code editor, code block, copy button, fields
 ├── lib/
 │   ├── assistant/        Shared request/response types, validation and the browser client
-│   ├── auth/             Supabase sign-in: session helpers, Server Actions, protected paths
+│   ├── auth/             Supabase sign-in: session helpers, Server Actions, sign-up, GitHub, protected paths
 │   ├── db/               Database access: daily allowance, history, Practice progress, table types
+│   ├── email/            Confirmation and password-reset emails, sent through Resend
 │   ├── server/           Server-only code: configuration, request checks, usage cap, Claude calls, prompts
 │   ├── practice/         Practice answer checker: reads code as text, never runs it
+│   ├── debug-session.ts  The Debug page's request states (loading, answer, error, retry)
 │   ├── modes.ts          The three modes (labels, descriptions, sections)
 │   ├── exercises.ts      Practice exercises
 │   └── languages.ts      Supported programming languages
@@ -310,7 +320,7 @@ supabase/
   - Requests are never retried automatically, to avoid unexpected charges.
 - **Stored data:** Learn questions, Debug code and descriptions, and the answers are stored in Supabase for 90 days. Practice drafts and progress are kept until the account is deleted. The `/privacy` page explains this to students; keep it in step with the code.
 - **Account deletion:** students can delete their own account on the Account page after entering their password again. It removes the account, history and Practice progress at once. The Supabase secret key is used only in `src/lib/auth/admin.ts`, for this and for sign-up.
-- **Not production-ready.** The app hasn't been reviewed for public deployment.
+- **Built for a single class.** It's designed to run as one server instance (the in-memory limits above assume that), and it hasn't had an independent security review.
 
 ## Project status and future work
 
