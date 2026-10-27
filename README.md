@@ -326,7 +326,3 @@ supabase/
 - A "download my data" button (for now, students ask by email, as the privacy page says).
 - A teacher view of students' progress.
 - Streaming AI answers, so long Debug answers appear progressively instead of after a wait.
-
-## License
-
-This repository doesn't currently include a license file.
