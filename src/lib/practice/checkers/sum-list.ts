@@ -4,6 +4,8 @@ import {
   boundOnce,
   checkPythonFunction,
   constantReturnResults,
+  LOOP,
+  returnInsideLoop,
   statements,
   testsWithoutFunction,
   topLevelSupported,
@@ -19,21 +21,6 @@ const CASES: { list: number[]; expected: number; label: string }[] = [
   { list: [5], expected: 5, label: "A single number" },
   { list: [-3, 10, 0], expected: 7, label: "Negative numbers and zero" },
 ];
-
-const LOOP = /^(?:for|while)\b.*:$/;
-
-/** The first `return` placed directly in a loop's block, if any. */
-function returnInsideLoop(body: PyLine[]): PyLine | null {
-  for (let i = 0; i < body.length; i++) {
-    if (!LOOP.test(body[i].text)) continue;
-    const blockIndent = body[i + 1]?.indent;
-    if (blockIndent === undefined || blockIndent <= body[i].indent) continue;
-    for (let k = i + 1; k < body.length && body[k].indent > body[i].indent; k++) {
-      if (body[k].indent === blockIndent && /^return\b/.test(body[k].text)) return body[k];
-    }
-  }
-  return null;
-}
 
 type Update = { op: "add" | "sub" | "mul" | "set"; source: "item" } | { op: "add"; source: number };
 

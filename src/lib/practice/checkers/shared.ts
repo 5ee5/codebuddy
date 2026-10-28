@@ -203,6 +203,21 @@ export function statements(fn: PyFunction, scan: ScannedSource): PyLine[] {
   return mixed ? [] : fn.body.filter((line) => !isPlaceholder(line, scan));
 }
 
+export const LOOP = /^(?:for|while)\b.*:$/;
+
+/** The first `return` placed directly in a loop's block, if any. */
+export function returnInsideLoop(body: PyLine[]): PyLine | null {
+  for (let i = 0; i < body.length; i++) {
+    if (!LOOP.test(body[i].text)) continue;
+    const blockIndent = body[i + 1]?.indent;
+    if (blockIndent === undefined || blockIndent <= body[i].indent) continue;
+    for (let k = i + 1; k < body.length && body[k].indent > body[i].indent; k++) {
+      if (body[k].indent === blockIndent && /^return\b/.test(body[k].text)) return body[k];
+    }
+  }
+  return null;
+}
+
 /** Whether `name` is only bound once at the top level (its `def`). */
 export function boundOnce(lines: PyLine[], name: string): boolean {
   const rebinds = new RegExp(`^(?:${name}\\s*=[^=]|(?:def|class)\\s+${name}\\b)`);

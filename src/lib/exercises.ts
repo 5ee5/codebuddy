@@ -127,6 +127,34 @@ print(count_vowels("Apple"))        # 2
 print(count_vowels("CodeBuddy"))    # 3
 `,
   },
+  {
+    id: "largest-number",
+    title: "Find the biggest",
+    difficulty: "medium",
+    language: "python",
+    description:
+      "Find the biggest number in a list without using the built-in max() function. This practises loops, if statements and choosing a starting value.",
+    requirements: [
+      "The function is called largest and takes a list of numbers.",
+      "It returns the biggest number in the list (for example largest([3, 9, 4]) returns 9).",
+      "It works when every number is negative: largest([-5, -2, -8]) returns -2.",
+      "The list always has at least one number.",
+      "Do not use the built-in max() function.",
+    ],
+    hints: [
+      "Keep a variable for the biggest number seen so far, and visit each number with a for loop.",
+      "Inside the loop, compare: is this number bigger than the biggest so far? If it is, remember it instead.",
+      "Be careful with the starting value: 0 is wrong when every number is negative. Start with the first number, numbers[0].",
+    ],
+    starterCode: `def largest(numbers):
+    # Your code here
+    pass
+
+
+print(largest([3, 9, 4]))     # 9
+print(largest([-5, -2, -8]))  # -2
+`,
+  },
 ];
 
 export function getExercise(id: string): Exercise | undefined {

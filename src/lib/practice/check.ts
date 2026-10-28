@@ -3,6 +3,7 @@ import type { Exercise } from "@/lib/exercises";
 import { checkCountVowels } from "@/lib/practice/checkers/count-vowels";
 import { checkFizzBuzz } from "@/lib/practice/checkers/fizzbuzz";
 import { checkGreetUser } from "@/lib/practice/checkers/greet-user";
+import { checkLargestNumber } from "@/lib/practice/checkers/largest-number";
 import type { Checker, CheckerOutput } from "@/lib/practice/checkers/shared";
 import { checkSumList } from "@/lib/practice/checkers/sum-list";
 import type { CheckVerdict, PracticeCheck } from "@/lib/practice/types";
@@ -17,6 +18,7 @@ export const CHECKERS: Readonly<Record<string, Checker>> = {
   "sum-list": checkSumList,
   fizzbuzz: checkFizzBuzz,
   "count-vowels": checkCountVowels,
+  "largest-number": checkLargestNumber,
 };
 
 export const VERDICT_LABELS: Record<CheckVerdict, string> = {

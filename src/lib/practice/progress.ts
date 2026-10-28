@@ -24,7 +24,7 @@ export interface PracticeSave {
   checked?: boolean;
 }
 
-/** More than the four exercises, but small enough that one call stays cheap. */
+/** More than the five exercises, but small enough that one call stays cheap. */
 export const MAX_SAVES_PER_CALL = 10;
 
 export function parsePracticeSaves(value: unknown): PracticeSave[] | null {

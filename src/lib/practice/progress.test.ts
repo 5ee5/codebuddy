@@ -1,17 +1,20 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { LIMITS } from "@/lib/assistant/validation";
 import { EXERCISES } from "@/lib/exercises";
 import { MAX_SAVES_PER_CALL, parsePracticeSaves } from "@/lib/practice/progress";
 
-const MIGRATION = readFileSync(
-  new URL("../../../supabase/migrations/20261026130000_ai_requests_and_practice_progress.sql", import.meta.url),
-  "utf8",
-);
+// Every migration in the order they run, so later ones override earlier ones.
+const MIGRATIONS_DIR = new URL("../../../supabase/migrations/", import.meta.url);
+const MIGRATION = readdirSync(MIGRATIONS_DIR)
+  .filter((name) => name.endsWith(".sql"))
+  .sort()
+  .map((name) => readFileSync(new URL(name, MIGRATIONS_DIR), "utf8"))
+  .join("\n");
 
 describe("the database's exercise list", () => {
   it("matches the exercises in the code", () => {
-    const match = MIGRATION.match(/check \(exercise_id in \(([^)]*)\)\)/);
+    const match = [...MIGRATION.matchAll(/check \(exercise_id in \(([^)]*)\)\)/g)].at(-1);
     const ids = match?.[1].match(/'([^']+)'/g)?.map((quoted) => quoted.slice(1, -1));
     expect(ids?.sort()).toEqual(EXERCISES.map((ex) => ex.id).sort());
   });

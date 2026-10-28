@@ -38,7 +38,7 @@ CodeBuddy has three modes. **Learn and Debug are connected to Claude. Practice c
 
 ### Practice: solve an exercise (checked locally)
 
-- Four built-in beginner exercises:
+- Five built-in beginner exercises:
 
   | Exercise | Language | Difficulty | Hints |
   |---|---|---|---|
@@ -46,6 +46,7 @@ CodeBuddy has three modes. **Learn and Debug are connected to Claude. Practice c
   | Add up a list | Python | Easy | 3 |
   | FizzBuzz | JavaScript | Medium | 3 |
   | Count the vowels | Python | Medium | 3 |
+  | Find the biggest | Python | Medium | 3 |
 
 - Each exercise has a description, a requirements checklist, starter code, and hints you can open one at a time. A counter shows how many hints you've used.
 - You write your solution in a code editor with line numbers. It's pre-filled with the starter code, and "Reset to starter code" restores it.

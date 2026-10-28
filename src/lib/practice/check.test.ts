@@ -416,6 +416,89 @@ describe("fizzbuzz", () => {
   });
 });
 
+// -------------------------------------------------------- largest-number ----
+
+describe("largest-number", () => {
+  it.each([
+    ["the pattern from the hints", "def largest(numbers):\n    biggest = numbers[0]\n    for number in numbers:\n        if number > biggest:\n            biggest = number\n    return biggest"],
+    ["skipping the first number", "def largest(numbers):\n    biggest = numbers[0]\n    for n in numbers[1:]:\n        if n > biggest:\n            biggest = n\n    return biggest"],
+    ["an index loop from 1", "def largest(numbers):\n    b = numbers[0]\n    for i in range(1, len(numbers)):\n        if numbers[i] > b:\n            b = numbers[i]\n    return b"],
+    ["the comparison written the other way", "def largest(numbers):\n    b = numbers[0]\n    for n in numbers:\n        if b < n:\n            b = n\n    return b"],
+    [">= and brackets", "def largest(numbers):\n    b = numbers[0]\n    for n in numbers:\n        if (n >= b):\n            b = n\n    return b"],
+    ["a one-line if", "def largest(numbers):\n    b = numbers[0]\n    for n in numbers:\n        if n > b: b = n\n    return b"],
+    ["float('-inf')", "def largest(numbers):\n    b = float('-inf')\n    for n in numbers:\n        if n > b:\n            b = n\n    return b"],
+    ["the starter prints kept", "def largest(numbers):\n    # biggest so far\n    biggest = numbers[0]\n\n    for number in numbers:\n        if number > biggest:\n            biggest = number\n\n    return biggest\n\n\nprint(largest([3, 9, 4]))     # 9\nprint(largest([-5, -2, -8]))  # -2\n"],
+  ])("accepts %s", (_label, code) => {
+    const result = check("largest-number", code);
+    expect(result.verdict).toBe("correct");
+    expect(result.tests).toHaveLength(4);
+  });
+
+  it("fails the max() requirement even though max() would give the right answer", () => {
+    const result = check("largest-number", "def largest(numbers):\n    return max(numbers)");
+    expect(result.verdict).toBe("partial");
+    expect(result.checks.find((c) => c.id === "no-max")).toMatchObject({ status: "fail", detail: "Line 2 calls max()." });
+    expect(result.tests.every((t) => t.passed === null)).toBe(true);
+  });
+
+  it("allows max( inside comments and strings", () => {
+    const code = '# Not allowed: max(numbers)\ndef largest(numbers):\n    """Like max() but by hand."""\n    b = numbers[0]\n    for n in numbers:\n        if n > b:\n            b = n\n    return b';
+    const result = check("largest-number", code);
+    expect(checkStatus(result, "no-max")).toBe("pass");
+    expect(result.verdict).toBe("correct");
+  });
+
+  it("models starting at 0, which only fails for negative numbers", () => {
+    const result = check("largest-number", "def largest(numbers):\n    b = 0\n    for n in numbers:\n        if n > b:\n            b = n\n    return b");
+    expect(result.verdict).toBe("partial");
+    expect(failedTests(result)).toEqual([expect.objectContaining({ call: "largest([-5, -2, -8])", actual: "0" })]);
+    expect(result.hint).toMatch(/every number is negative/);
+  });
+
+  it("shows a float starting value the way Python would", () => {
+    const result = check("largest-number", "def largest(numbers):\n    b = 0.0\n    for n in numbers:\n        if n > b:\n            b = n\n    return b");
+    expect(result.tests[0]).toMatchObject({ actual: "9", passed: true });
+    expect(result.tests[1]).toMatchObject({ actual: "0.0", passed: false });
+  });
+
+  it.each([
+    ["comparing the wrong way", "def largest(numbers):\n    b = numbers[0]\n    for n in numbers:\n        if n < b:\n            b = n\n    return b", "3", "-8"],
+    ["replacing without comparing", "def largest(numbers):\n    b = numbers[0]\n    for n in numbers:\n        b = n\n    return b", "4", "-8"],
+    ["float('inf') as the start", "def largest(numbers):\n    b = float('inf')\n    for n in numbers:\n        if n > b:\n            b = n\n    return b", "inf", "inf"],
+  ])("models the mistake of %s", (_label, code, first, negatives) => {
+    const result = check("largest-number", code);
+    expect(result.verdict).toBe("partial");
+    expect(result.tests[0].actual).toBe(first);
+    expect(result.tests[1].actual).toBe(negatives);
+    expect(result.hint).toMatch(/by hand/);
+  });
+
+  it("catches a return inside the loop and shows what it returns", () => {
+    const result = check("largest-number", "def largest(numbers):\n    b = numbers[0]\n    for n in numbers:\n        if n > b:\n            b = n\n        return b");
+    expect(result.verdict).toBe("partial");
+    expect(result.checks.find((c) => c.id === "return-after-loop")).toMatchObject({ status: "fail" });
+    expect(result.tests[0]).toMatchObject({ actual: "3", passed: false });
+    expect(result.hint).toMatch(/Indentation/);
+  });
+
+  it("returns None when skipping the first number with no return after the loop", () => {
+    const result = check("largest-number", "def largest(numbers):\n    b = numbers[0]\n    for n in numbers[1:]:\n        if n > b:\n            b = n\n        return b");
+    expect(result.tests[2]).toMatchObject({ call: "largest([7])", actual: "None", passed: false });
+  });
+
+  it.each([
+    ["a while loop", "def largest(numbers):\n    b = numbers[0]\n    i = 1\n    while i < len(numbers):\n        if numbers[i] > b:\n            b = numbers[i]\n        i += 1\n    return b"],
+    ["sorting", "def largest(numbers):\n    return sorted(numbers)[-1]"],
+    ["an else branch", "def largest(numbers):\n    b = numbers[0]\n    for n in numbers:\n        if n > b:\n            b = n\n        else:\n            pass\n    return b"],
+  ])("is unverified with %s", (_label, code) => {
+    expect(check("largest-number", code).verdict).toBe("unverified");
+  });
+
+  it("is incorrect when largest is missing", () => {
+    expect(check("largest-number", "def biggest(numbers):\n    return 0").verdict).toBe("incorrect");
+  });
+});
+
 // ------------------------------------------------------- constant returns ----
 
 describe("constant returns", () => {
